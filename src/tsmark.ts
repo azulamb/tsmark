@@ -89,7 +89,7 @@ function nodeToHTML(node: TsmarkNode): string {
   return '';
 }
 
-export function parseToHTML(md: string): string {
+export function convertToHTML(md: string): string {
   const nodes = parse(md);
   return nodes.map((node) => {
     return nodeToHTML(node);
