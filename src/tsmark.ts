@@ -30,10 +30,19 @@ export function parse(md: string): TsmarkNode[] {
       while (
         i < lines.length && (/^( {4}|\t)/.test(lines[i]) || lines[i] === '')
       ) {
-        codeLines.push(lines[i].replace(/^( {4}|\t)/, ''));
+        codeLines.push(lines[i]);
         i++;
       }
-      nodes.push({ type: 'code_block', content: codeLines.join('\n') + '\n' });
+
+      while (codeLines.length > 0 && codeLines[codeLines.length - 1] === '') {
+        codeLines.pop();
+      }
+
+      const content = codeLines
+        .map((l) => l.replace(/^( {4}|\t)/, ''))
+        .join('\n');
+
+      nodes.push({ type: 'code_block', content: content + '\n' });
       continue;
     }
 
