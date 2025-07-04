@@ -1,14 +1,14 @@
 {
-	"lock": false,
-	"tasks": {
-		"update": "deno run --allow-read --allow-write --allow-net ./tools/dltests.ts",
-		"test": "deno test --allow-read ./tests/test.ts"
-	},
-	"lint": {
-		"include": ["./src", "./tests", "./tools"]
-	},
-	"fmt": {
-		"include": ["./src", "./tests", "./tools"],
-		"singleQuote": true
-	}
+  "lock": false,
+  "tasks": {
+    "update": "deno run --allow-read --allow-write --allow-net ./tools/dltests.ts",
+    "test": "deno test --allow-read ./tests/test.ts"
+  },
+  "lint": {
+    "include": ["./src", "./tests", "./tools"]
+  },
+  "fmt": {
+    "include": ["./src", "./tests", "./tools"],
+    "singleQuote": true
+  }
 }
