@@ -26,7 +26,7 @@ Denoのフォーマッターを利用する。
 ## テスト
 
 ```
-deno run test
+deno task test
 ```
 
 テストは完成している。
