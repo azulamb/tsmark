@@ -265,7 +265,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   const placeholders: string[] = [];
 
   // store code spans as placeholders before any other processing
-  text = text.replace(/(`+)([\s\S]*?)\1/g, (_, _p1, p2) => {
+  text = text.replace(/(?<!\\)(`+)([\s\S]*?)\1/g, (_, _p1, p2) => {
     const token = `\u0002${placeholders.length}\u0002`;
     placeholders.push(`<code>${escapeHTML(p2.trim())}</code>`);
     return token;
@@ -437,5 +437,5 @@ export function convertToHTML(md: string): string {
   const nodes = parse(filtered.join('\n'));
   return nodes.map((node) => {
     return nodeToHTML(node, refs);
-  }).join('') + '\n';
+  }).join('\n') + '\n';
 }
