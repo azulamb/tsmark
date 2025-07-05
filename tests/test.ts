@@ -9,9 +9,11 @@ const testIds = Deno.args.map((arg) => {
   return 0 < id;
 });
 
-const testCases = 0 < testIds.length ? tests.filter((test, index) => {
-  return testIds.includes(index + 1);
-}) : tests;
+const testCases = 0 < testIds.length
+  ? tests.filter((_test, index) => {
+    return testIds.includes(index + 1);
+  })
+  : tests;
 
 let id = 0;
 for (const test of testCases) {
@@ -19,5 +21,5 @@ for (const test of testCases) {
   Deno.test(`test[${showId}]`, () => {
     const actual = convertToHTML(test.markdown);
     assert.assertEquals(actual, test.html, `Test failed[${test.example}]:`);
-  })
+  });
 }
