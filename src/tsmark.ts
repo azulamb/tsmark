@@ -64,13 +64,20 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // blockquote
-    const bqMatch = line.match(/^ {0,3}> ?(.*)$/);
+    const bqMatch = line.match(/^ {0,3}>(.*)$/);
     if (bqMatch) {
       const bqLines: string[] = [];
       while (i < lines.length) {
-        const m = lines[i].match(/^ {0,3}> ?(.*)$/);
+        const m = lines[i].match(/^ {0,3}>(.*)$/);
         if (m) {
-          bqLines.push(m[1]);
+          let rest = m[1];
+          if (rest.startsWith(' ')) {
+            rest = rest.slice(1);
+          } else if (rest.startsWith('\t')) {
+            rest = '  ' + rest.slice(1);
+          }
+          rest = rest.replace(/\t/g, '    ');
+          bqLines.push(rest);
           i++;
         } else if (lines[i].trim() === '') {
           bqLines.push('');
