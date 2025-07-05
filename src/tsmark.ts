@@ -284,10 +284,38 @@ function inlineToHTML(text: string): string {
   });
 
   // store HTML tags as placeholders
-  text = text.replace(/<\/?[A-Za-z](?![A-Za-z0-9+.-]*:)[^>]*>/g, (m) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(m);
-    return token;
+  const htmlCandidate =
+    /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
+
+  function isHtmlTag(tag: string): boolean {
+    const openTag =
+      /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
+    const closeTag = /^<\/[A-Za-z][A-Za-z0-9-]*\s*>$/;
+    const comment = /^(?:<!---->|<!--(?:-?[^>-])(?:[^-]*-+)*?-->)$/s;
+    const proc = /^<\?[\s\S]*?\?>$/;
+    const decl = /^<![A-Z]+\s+[^>]*>$/;
+    const cdata = /^<!\[CDATA\[[\s\S]*?\]\]>$/;
+    return (
+      openTag.test(tag) ||
+      closeTag.test(tag) ||
+      comment.test(tag) ||
+      proc.test(tag) ||
+      decl.test(tag) ||
+      cdata.test(tag)
+    );
+  }
+
+  text = text.replace(htmlCandidate, (m) => {
+    if (isHtmlTag(m)) {
+      let html = m;
+      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
+        html = html.replace(/>$/, '&gt;');
+      }
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    }
+    return m;
   });
 
   let out = escapeHTML(text);
