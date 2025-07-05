@@ -431,6 +431,10 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     return str.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
   }
 
+  function restoreEntities(str: string): string {
+    return str.replace(/\u0003(\d+)\u0003/g, (_, idx) => placeholders[+idx]);
+  }
+
   // store character references as placeholders so that they do not affect
   // emphasis and other inline processing
   text = text.replace(/&(#x?[0-9a-f]+|[A-Za-z][A-Za-z0-9]*);/gi, (m) => {
@@ -443,10 +447,14 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   text = text.replace(
     /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (_, alt, href, title) => {
-      const src = encodeURI(restoreEscapes(href.replace(/^<|>$/g, '')));
+      const src = encodeURI(
+        restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
+      );
       let html = `<img src="${src}" alt="${escapeHTML(stripMd(alt))}"`;
       if (title) {
-        html += ` title="${escapeHTML(restoreEscapes(title))}"`;
+        html += ` title="${
+          escapeHTML(restoreEntities(restoreEscapes(title)))
+        }"`;
       }
       html += ' />';
       const token = `\u0000${placeholders.length}\u0000`;
@@ -461,11 +469,13 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     (_, textContent, href, title) => {
       const token = `\u0000${placeholders.length}\u0000`;
       const decodedHref = decodeEntities(
-        unescapeMd(restoreEscapes(href)),
+        unescapeMd(restoreEntities(restoreEscapes(href))),
       );
       const titleAttr = title
         ? ` title="${
-          escapeHTML(decodeEntities(unescapeMd(restoreEscapes(title))))
+          escapeHTML(
+            decodeEntities(unescapeMd(restoreEntities(restoreEscapes(title)))),
+          )
         }"`
         : '';
       placeholders.push(
