@@ -200,11 +200,15 @@ export function parse(md: string): TsmarkNode[] {
   return nodes;
 }
 
-function nodeToHTML(node: TsmarkNode): string {
+type RefDef = { url: string; title?: string };
+
+function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   if (node.type === 'heading') {
-    return `<h${node.level}>${inlineToHTML(node.content)}</h${node.level}>`;
+    return `<h${node.level}>${
+      inlineToHTML(node.content, refs)
+    }</h${node.level}>`;
   } else if (node.type === 'paragraph') {
-    return `<p>${inlineToHTML(node.content)}</p>`;
+    return `<p>${inlineToHTML(node.content, refs)}</p>`;
   } else if (node.type === 'code_block') {
     const escaped = node.content.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     return `<pre><code>${escaped}</code></pre>`;
@@ -216,8 +220,8 @@ function nodeToHTML(node: TsmarkNode): string {
           return '<li></li>';
         }
         if (first.type === 'paragraph') {
-          const firstHTML = inlineToHTML(first.content);
-          const restHTML = rest.map(nodeToHTML).join('\n');
+          const firstHTML = inlineToHTML(first.content, refs);
+          const restHTML = rest.map((n) => nodeToHTML(n, refs)).join('\n');
           if (rest.length === 0) {
             return `<li>${firstHTML}</li>`;
           }
@@ -226,17 +230,19 @@ function nodeToHTML(node: TsmarkNode): string {
           }
           return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
         }
-        const inner = [first, ...rest].map(nodeToHTML).join('\n');
+        const inner = [first, ...rest].map((n) => nodeToHTML(n, refs)).join(
+          '\n',
+        );
         return `<li>\n${inner}\n</li>`;
       }
-      return `<li>${nodeToHTML(it)}</li>`;
+      return `<li>${nodeToHTML(it, refs)}</li>`;
     }).join('\n');
     return `<ul>\n${items}\n</ul>`;
   } else if (node.type === 'list_item') {
-    return node.children.map(nodeToHTML).join('');
+    return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
     return `<blockquote>\n${
-      node.children.map(nodeToHTML).join('')
+      node.children.map((n) => nodeToHTML(n, refs)).join('')
     }\n</blockquote>`;
   } else if (node.type === 'thematic_break') {
     return '<hr />';
@@ -251,7 +257,11 @@ function escapeHTML(text: string): string {
     .replace(/\"/g, '&quot;');
 }
 
-function inlineToHTML(text: string): string {
+function stripMd(text: string): string {
+  return text.replace(/[*_\[\]`]/g, '');
+}
+
+function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   const placeholders: string[] = [];
 
   // store code spans as placeholders before any other processing
@@ -282,6 +292,52 @@ function inlineToHTML(text: string): string {
     placeholders.push(`<a href="mailto:${p1}">${escapeHTML(p1)}</a>`);
     return token;
   });
+
+  // inline images (direct)
+  text = text.replace(
+    /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    (_, alt, href, title) => {
+      let html = `<img src="${encodeURI(href.replace(/^<|>$/g, ''))}" alt="${
+        escapeHTML(stripMd(alt))
+      }"`;
+      if (title) html += ` title="${escapeHTML(title)}"`;
+      html += ' />';
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    },
+  );
+
+  // reference-style images
+  if (refs) {
+    text = text.replace(/!\[([^\]]*)\]\[([^\]]*)\]/g, (m, alt, lab) => {
+      const label = (lab || alt).toLowerCase();
+      const def = refs.get(label);
+      if (!def) return m;
+      let html = `<img src="${encodeURI(def.url)}" alt="${
+        escapeHTML(stripMd(alt))
+      }"`;
+      if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+      html += ' />';
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    });
+
+    text = text.replace(/!\[([^\]]+)\](?!\()/g, (m, alt) => {
+      const label = alt.toLowerCase();
+      const def = refs.get(label);
+      if (!def) return m;
+      let html = `<img src="${encodeURI(def.url)}" alt="${
+        escapeHTML(stripMd(alt))
+      }"`;
+      if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+      html += ' />';
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    });
+  }
 
   // store HTML tags as placeholders
   const htmlCandidate =
@@ -327,8 +383,32 @@ function inlineToHTML(text: string): string {
   out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  out = out.replace(
+    /\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    (_, p1, p2, p3) => {
+      const titleAttr = p3 ? ` title="${escapeHTML(p3)}"` : '';
+      return `<a href="${p2}"${titleAttr}>${p1}</a>`;
+    },
+  );
+
+  if (refs) {
+    out = out.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (m, text, lab) => {
+      const key = (lab || text).toLowerCase();
+      const def = refs.get(key);
+      if (!def) return m;
+      const titleAttr = def.title ? ` title="${escapeHTML(def.title)}"` : '';
+      return `<a href="${def.url}"${titleAttr}>${text}</a>`;
+    });
+
+    out = out.replace(/\[([^\]]+)\](?!\()/g, (m, text) => {
+      const def = refs.get(text.toLowerCase());
+      if (!def) return m;
+      const titleAttr = def.title ? ` title="${escapeHTML(def.title)}"` : '';
+      return `<a href="${def.url}"${titleAttr}>${text}</a>`;
+    });
+  }
   out = out.replace(/ {2}\n/g, '<br />\n');
+  out = out.replace(/ (?=\n)/g, '');
 
   // restore placeholders
   out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
@@ -339,8 +419,23 @@ function inlineToHTML(text: string): string {
 }
 
 export function convertToHTML(md: string): string {
-  const nodes = parse(md);
+  const refDef = /^ {0,3}\[([^\]]+)\]:\s*(\S+)(?:\s+"([^"]+)")?\s*$/;
+  const refs = new Map<string, RefDef>();
+  const filtered: string[] = [];
+  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
+    const m = line.match(refDef);
+    if (m) {
+      let url = m[2];
+      if (url.startsWith('<') && url.endsWith('>')) {
+        url = url.slice(1, -1);
+      }
+      refs.set(m[1].toLowerCase(), { url, title: m[3] });
+    } else {
+      filtered.push(line);
+    }
+  }
+  const nodes = parse(filtered.join('\n'));
   return nodes.map((node) => {
-    return nodeToHTML(node);
+    return nodeToHTML(node, refs);
   }).join('') + '\n';
 }
