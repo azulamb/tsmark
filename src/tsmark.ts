@@ -148,6 +148,10 @@ export function parse(md: string): TsmarkNode[] {
     const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
     if (fenceMatch) {
       const fence = fenceMatch[2];
+      const info = fenceMatch[3].trim();
+      const language = info
+        ? decodeEntities(unescapeMd(info.split(/\s+/)[0]))
+        : undefined;
       i++;
       const codeLines: string[] = [];
       while (i < lines.length && !lines[i].startsWith(fence)) {
@@ -156,7 +160,11 @@ export function parse(md: string): TsmarkNode[] {
       }
       // skip closing fence
       if (i < lines.length) i++;
-      nodes.push({ type: 'code_block', content: codeLines.join('\n') + '\n' });
+      nodes.push({
+        type: 'code_block',
+        content: codeLines.join('\n') + '\n',
+        language,
+      });
       continue;
     }
 
@@ -242,7 +250,10 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
     return `<p>${inlineToHTML(node.content, refs)}</p>`;
   } else if (node.type === 'code_block') {
     const escaped = node.content.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    return `<pre><code>${escaped}</code></pre>`;
+    const langClass = node.language
+      ? ` class="language-${escapeHTML(node.language)}"`
+      : '';
+    return `<pre><code${langClass}>${escaped}</code></pre>`;
   } else if (node.type === 'list') {
     const items = node.items.map((it) => {
       if (it.type === 'list_item') {
@@ -294,6 +305,51 @@ function stripMd(text: string): string {
   return text.replace(/[*_\[\]`]/g, '');
 }
 
+function unescapeMd(text: string): string {
+  return text.replace(/\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
+}
+
+const namedEntities: Record<string, string> = {
+  quot: '"',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  nbsp: '\u00A0',
+  copy: '©',
+  AElig: 'Æ',
+  Dcaron: 'Ď',
+  frac34: '¾',
+  HilbertSpace: 'ℋ',
+  DifferentialD: 'ⅆ',
+  ClockwiseContourIntegral: '∲',
+  ngE: '≧̸',
+  auml: 'ä',
+  ouml: 'ö',
+};
+
+function decodeEntities(text: string): string {
+  return text.replace(
+    /&(#x?[0-9a-f]+|[A-Za-z][A-Za-z0-9]*);/gi,
+    (_, body: string) => {
+      const lower = body.toLowerCase();
+      if (lower.startsWith('#x')) {
+        const cp = parseInt(body.slice(2), 16);
+        if (cp === 0 || cp > 0x10ffff || (0xd800 <= cp && cp <= 0xdfff)) {
+          return '\uFFFD';
+        }
+        return String.fromCodePoint(cp);
+      } else if (lower.startsWith('#')) {
+        const cp = parseInt(body.slice(1), 10);
+        if (cp === 0 || cp > 0x10ffff || (0xd800 <= cp && cp <= 0xdfff)) {
+          return '\uFFFD';
+        }
+        return String.fromCodePoint(cp);
+      }
+      return namedEntities[body] ?? `&${body};`;
+    },
+  );
+}
+
 function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   const placeholders: string[] = [];
 
@@ -326,6 +382,15 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     },
   );
 
+  // store character references as placeholders
+  text = text.replace(/&(#x?[0-9a-f]+|[A-Za-z][A-Za-z0-9]*);/gi, (m) => {
+    const decoded = decodeEntities(m);
+    if (decoded === m) return m;
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(decoded);
+    return token;
+  });
+
   // inline images (direct)
   text = text.replace(
     /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
@@ -337,6 +402,22 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       html += ' />';
       const token = `\u0000${placeholders.length}\u0000`;
       placeholders.push(html);
+      return token;
+    },
+  );
+
+  // inline links (direct)
+  text = text.replace(
+    /\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    (_, textContent, href, title) => {
+      const token = `\u0000${placeholders.length}\u0000`;
+      const decodedHref = decodeEntities(unescapeMd(href));
+      const titleAttr = title
+        ? ` title="${escapeHTML(decodeEntities(unescapeMd(title)))}"`
+        : '';
+      placeholders.push(
+        `<a href="${encodeURI(decodedHref)}"${titleAttr}>${textContent}</a>`,
+      );
       return token;
     },
   );
@@ -370,6 +451,36 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       placeholders.push(html);
       return token;
     });
+
+    // reference-style links
+    text = text.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (m, textContent, lab) => {
+      const key = (lab || textContent).toLowerCase();
+      const def = refs.get(key);
+      if (!def) return m;
+      const token = `\u0000${placeholders.length}\u0000`;
+      const titleAttr = def.title
+        ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
+        : '';
+      const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+      placeholders.push(
+        `<a href="${href}"${titleAttr}>${textContent}</a>`,
+      );
+      return token;
+    });
+
+    text = text.replace(/\[([^\]]+)\](?!\()/g, (m, textContent) => {
+      const def = refs.get(textContent.toLowerCase());
+      if (!def) return m;
+      const token = `\u0000${placeholders.length}\u0000`;
+      const titleAttr = def.title
+        ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
+        : '';
+      const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+      placeholders.push(
+        `<a href="${href}"${titleAttr}>${textContent}</a>`,
+      );
+      return token;
+    });
   }
 
   // store HTML tags as placeholders
@@ -396,29 +507,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
-  out = out.replace(
-    /\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
-    (_, p1, p2, p3) => {
-      const titleAttr = p3 ? ` title="${escapeHTML(p3)}"` : '';
-      return `<a href="${p2}"${titleAttr}>${p1}</a>`;
-    },
-  );
 
   if (refs) {
-    out = out.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (m, text, lab) => {
-      const key = (lab || text).toLowerCase();
-      const def = refs.get(key);
-      if (!def) return m;
-      const titleAttr = def.title ? ` title="${escapeHTML(def.title)}"` : '';
-      return `<a href="${def.url}"${titleAttr}>${text}</a>`;
-    });
-
-    out = out.replace(/\[([^\]]+)\](?!\()/g, (m, text) => {
-      const def = refs.get(text.toLowerCase());
-      if (!def) return m;
-      const titleAttr = def.title ? ` title="${escapeHTML(def.title)}"` : '';
-      return `<a href="${def.url}"${titleAttr}>${text}</a>`;
-    });
+    // reference link placeholders are already handled
   }
   out = out.replace(/ {2}\n/g, '<br />\n');
   out = out.replace(/ (?=\n)/g, '');
@@ -442,7 +533,10 @@ export function convertToHTML(md: string): string {
       if (url.startsWith('<') && url.endsWith('>')) {
         url = url.slice(1, -1);
       }
-      refs.set(m[1].toLowerCase(), { url, title: m[3] });
+      refs.set(m[1].toLowerCase(), {
+        url: unescapeMd(url),
+        title: m[3] ? unescapeMd(m[3]) : undefined,
+      });
     } else {
       filtered.push(line);
     }

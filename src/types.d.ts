@@ -20,6 +20,7 @@ export type TsmarkNode =
   | {
     type: 'code_block';
     content: string;
+    language?: string;
   }
   | {
     type: 'list';
