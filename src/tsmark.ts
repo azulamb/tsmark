@@ -566,10 +566,16 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   // backslash at line end creates hard line break
   out = out.replace(/\\\n/g, '<br />\n');
 
-  out = out.replace(/\*\*(\S(?:[^*]*?\S)?)\*\*/g, '<strong>$1</strong>');
-  out = out.replace(/__(\S(?:[^_]*?\S)?)__/g, '<strong>$1</strong>');
-  out = out.replace(/\*(\S(?:[^*]*?\S)?)\*/g, '<em>$1</em>');
-  out = out.replace(/_(\S(?:[^_]*?\S)?)_/g, '<em>$1</em>');
+  out = out.replace(
+    /\*\*([^*\s](?:[^*]*[^*\s])?)\*\*(?!\*)/g,
+    '<strong>$1</strong>',
+  );
+  out = out.replace(
+    /__([^_\s](?:[^_]*[^_\s])?)__(?!_)/g,
+    '<strong>$1</strong>',
+  );
+  out = out.replace(/\*([^*\s](?:[^*]*[^*\s])?)\*(?!\*)/g, '<em>$1</em>');
+  out = out.replace(/_([^_\s](?:[^_]*[^_\s])?)_(?!_)/g, '<em>$1</em>');
 
   // trim spaces before emphasis at line start
   out = out.replace(/(^|\n)\s+(?=<(?:em|strong)>)/g, '$1');
