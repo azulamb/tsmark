@@ -271,17 +271,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     return token;
   });
 
-  // handle backslash escapes by storing them as placeholders
-  text = text.replace(
-    /\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g,
-    (_, p1) => {
-      const token = `\u0001${placeholders.length}\u0001`;
-      placeholders.push(escapeHTML(p1));
-      return token;
-    },
-  );
-
-  // store autolinks as placeholders
+  // store autolinks as placeholders before handling escapes
   text = text.replace(/<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*)>/g, (_, p1) => {
     const token = `\u0000${placeholders.length}\u0000`;
     placeholders.push(`<a href="${encodeURI(p1)}">${escapeHTML(p1)}</a>`);
@@ -292,6 +282,16 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     placeholders.push(`<a href="mailto:${p1}">${escapeHTML(p1)}</a>`);
     return token;
   });
+
+  // handle backslash escapes by storing them as placeholders
+  text = text.replace(
+    /\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g,
+    (_, p1) => {
+      const token = `\u0001${placeholders.length}\u0001`;
+      placeholders.push(escapeHTML(p1));
+      return token;
+    },
+  );
 
   // inline images (direct)
   text = text.replace(
