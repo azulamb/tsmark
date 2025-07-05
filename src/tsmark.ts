@@ -207,14 +207,19 @@ function nodeToHTML(node: TsmarkNode): string {
 }
 
 function escapeHTML(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
-    />/g,
-    '&gt;',
-  );
+  return text.replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;');
 }
 
 function inlineToHTML(text: string): string {
   let out = escapeHTML(text);
+  // handle backslash escapes for punctuation characters
+  // see CommonMark Spec 6. Backslash escapes
+  out = out.replace(/\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
+  // backslash at line end creates hard line break
+  out = out.replace(/\\\n/g, '<br />\n');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
