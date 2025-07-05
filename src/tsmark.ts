@@ -97,7 +97,7 @@ export function parse(md: string): TsmarkNode[] {
         const m = lines[i].match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
         if (!m) break;
         const markerIndent = indentWidth(m[1]) + 2;
-        const itemLines: string[] = [m[3]];
+        const itemLines: string[] = [stripColumns(m[3], markerIndent)];
         i++;
         while (i < lines.length) {
           const ind = indentWidth(lines[i]);
