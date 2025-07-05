@@ -1,5 +1,38 @@
 import type { TsmarkNode } from './types.d.ts';
 
+function indentWidth(line: string): number {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === ' ') {
+      col++;
+    } else if (ch === '\t') {
+      col += 4 - (col % 4);
+    } else {
+      break;
+    }
+  }
+  return col;
+}
+
+function stripIndent(line: string): string {
+  let col = 0;
+  let idx = 0;
+  while (col < 4 && idx < line.length) {
+    const ch = line[idx];
+    if (ch === ' ') {
+      col++;
+      idx++;
+    } else if (ch === '\t') {
+      const add = 4 - (col % 4);
+      col += add;
+      idx++;
+    } else {
+      break;
+    }
+  }
+  return line.slice(idx);
+}
+
 export function parse(md: string): TsmarkNode[] {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
   const nodes: TsmarkNode[] = [];
@@ -24,11 +57,11 @@ export function parse(md: string): TsmarkNode[] {
       continue;
     }
 
-    // indented code block (4 spaces or tab)
-    if (/^( {4}|\t)/.test(line)) {
+    // indented code block (indentation >= 4 spaces)
+    if (indentWidth(line) >= 4) {
       const codeLines: string[] = [];
       while (
-        i < lines.length && (/^( {4}|\t)/.test(lines[i]) || lines[i] === '')
+        i < lines.length && (indentWidth(lines[i]) >= 4 || lines[i] === '')
       ) {
         codeLines.push(lines[i]);
         i++;
@@ -38,9 +71,7 @@ export function parse(md: string): TsmarkNode[] {
         codeLines.pop();
       }
 
-      const content = codeLines
-        .map((l) => l.replace(/^( {4}|\t)/, ''))
-        .join('\n');
+      const content = codeLines.map((l) => stripIndent(l)).join('\n');
 
       nodes.push({ type: 'code_block', content: content + '\n' });
       continue;
