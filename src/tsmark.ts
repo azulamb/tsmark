@@ -17,20 +17,28 @@ function indentWidth(line: string): number {
 function stripColumns(line: string, count: number): string {
   let col = 0;
   let idx = 0;
-  while (col < count && idx < line.length) {
+  let indent = '';
+  while (idx < line.length) {
     const ch = line[idx];
     if (ch === ' ') {
+      indent += ' ';
       col++;
       idx++;
     } else if (ch === '\t') {
-      const add = 4 - (col % 4);
-      col += add;
+      const width = 4 - (col % 4);
+      indent += ' '.repeat(width);
+      col += width;
       idx++;
     } else {
       break;
     }
   }
-  return line.slice(idx);
+
+  const rest = line.slice(idx);
+  if (count >= indent.length) {
+    return rest;
+  }
+  return indent.slice(count) + rest;
 }
 
 function stripIndent(line: string): string {
