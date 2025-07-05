@@ -112,11 +112,22 @@ export function parse(md: string): TsmarkNode[] {
 
     // list
     const listItemMatch = line.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
-    if (listItemMatch) {
+    if (
+      listItemMatch &&
+      !(/^ {0,3}(\*\s*){3,}$/.test(line) || /^ {0,3}(-\s*){3,}$/.test(line) ||
+        /^ {0,3}(_\s*){3,}$/.test(line))
+    ) {
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
         const m = lines[i].match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
-        if (!m) break;
+        if (
+          !m ||
+          /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
+          /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
+          /^ {0,3}(_\s*){3,}$/.test(lines[i])
+        ) {
+          break;
+        }
         const markerIndent = indentWidth(m[1]) + 2;
         const itemLines: string[] = [stripColumns(m[3], markerIndent)];
         i++;
@@ -189,7 +200,7 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // ATX heading
-    const atx = line.match(/^(#{1,6})\s+(.*)$/);
+    const atx = line.match(/^ {0,3}(#{1,6})\s+(.*)$/);
     if (atx) {
       const level = atx[1].length;
       const content = atx[2].replace(/\s+#+\s*$/, '').trim();
@@ -224,8 +235,20 @@ export function parse(md: string): TsmarkNode[] {
     if (line.trim() !== '') {
       const paraLines: string[] = [];
       while (i < lines.length && lines[i].trim() !== '') {
-        if (/^\s{0,3}[-+*][ \t]+/.test(lines[i])) break;
-        paraLines.push(lines[i]);
+        if (
+          /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
+          /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
+          /^ {0,3}(_\s*){3,}$/.test(lines[i]) ||
+          /^\s{0,3}[-+*][ \t]+/.test(lines[i])
+        ) {
+          break;
+        }
+        const ln = lines[i];
+        if (indentWidth(ln) >= 4) {
+          paraLines.push(stripIndent(ln));
+        } else {
+          paraLines.push(ln);
+        }
         i++;
       }
       nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
@@ -334,14 +357,24 @@ function decodeEntities(text: string): string {
       const lower = body.toLowerCase();
       if (lower.startsWith('#x')) {
         const cp = parseInt(body.slice(2), 16);
-        if (cp === 0 || cp > 0x10ffff || (0xd800 <= cp && cp <= 0xdfff)) {
-          return '\uFFFD';
+        if (
+          Number.isNaN(cp) ||
+          cp === 0 ||
+          cp > 0x10ffff ||
+          (0xd800 <= cp && cp <= 0xdfff)
+        ) {
+          return `&${body};`;
         }
         return String.fromCodePoint(cp);
       } else if (lower.startsWith('#')) {
         const cp = parseInt(body.slice(1), 10);
-        if (cp === 0 || cp > 0x10ffff || (0xd800 <= cp && cp <= 0xdfff)) {
-          return '\uFFFD';
+        if (
+          Number.isNaN(cp) ||
+          cp === 0 ||
+          cp > 0x10ffff ||
+          (0xd800 <= cp && cp <= 0xdfff)
+        ) {
+          return `&${body};`;
         }
         return String.fromCodePoint(cp);
       }
@@ -386,13 +419,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     return str.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
   }
 
-  // store character references as placeholders
+  // decode character references before further processing
   text = text.replace(/&(#x?[0-9a-f]+|[A-Za-z][A-Za-z0-9]*);/gi, (m) => {
-    const decoded = decodeEntities(m);
-    if (decoded === m) return m;
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(decoded);
-    return token;
+    return decodeEntities(m);
   });
 
   // inline images (direct)
@@ -512,10 +541,13 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   // backslash at line end creates hard line break
   out = out.replace(/\\\n/g, '<br />\n');
 
-  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
+  out = out.replace(/\*\*(\S(?:[^*]*?\S)?)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/__(\S(?:[^_]*?\S)?)__/g, '<strong>$1</strong>');
+  out = out.replace(/\*(\S(?:[^*]*?\S)?)\*/g, '<em>$1</em>');
+  out = out.replace(/_(\S(?:[^_]*?\S)?)_/g, '<em>$1</em>');
+
+  // trim spaces before emphasis at line start
+  out = out.replace(/(^|\n)\s+(?=<(?:em|strong)>)/g, '$1');
 
   if (refs) {
     // reference link placeholders are already handled
