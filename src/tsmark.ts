@@ -1,5 +1,26 @@
 import type { TsmarkNode } from './types.d.ts';
 
+const htmlCandidate =
+  /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
+
+function isHtmlTag(tag: string): boolean {
+  const openTag =
+    /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
+  const closeTag = /^<\/[A-Za-z][A-Za-z0-9-]*\s*>$/;
+  const comment = /^(?:<!---->|<!--(?:-?[^>-])(?:[^-]*-+)*?-->)$/s;
+  const proc = /^<\?[\s\S]*?\?>$/;
+  const decl = /^<![A-Z]+\s+[^>]*>$/;
+  const cdata = /^<!\[CDATA\[[\s\S]*?\]\]>$/;
+  return (
+    openTag.test(tag) ||
+    closeTag.test(tag) ||
+    comment.test(tag) ||
+    proc.test(tag) ||
+    decl.test(tag) ||
+    cdata.test(tag)
+  );
+}
+
 function indentWidth(line: string): number {
   let col = 0;
   for (const ch of line) {
@@ -181,6 +202,16 @@ export function parse(md: string): TsmarkNode[] {
       }
     }
 
+    // HTML block (single line)
+    {
+      const m = line.match(/^ {0,3}(<.*>)$/);
+      if (m && isHtmlTag(m[1])) {
+        nodes.push({ type: 'html', content: m[1] });
+        i++;
+        continue;
+      }
+    }
+
     // paragraph
     if (line.trim() !== '') {
       const paraLines: string[] = [];
@@ -246,6 +277,8 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
     }\n</blockquote>`;
   } else if (node.type === 'thematic_break') {
     return '<hr />';
+  } else if (node.type === 'html') {
+    return node.content;
   }
   return '';
 }
@@ -340,26 +373,6 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   }
 
   // store HTML tags as placeholders
-  const htmlCandidate =
-    /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
-
-  function isHtmlTag(tag: string): boolean {
-    const openTag =
-      /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
-    const closeTag = /^<\/[A-Za-z][A-Za-z0-9-]*\s*>$/;
-    const comment = /^(?:<!---->|<!--(?:-?[^>-])(?:[^-]*-+)*?-->)$/s;
-    const proc = /^<\?[\s\S]*?\?>$/;
-    const decl = /^<![A-Z]+\s+[^>]*>$/;
-    const cdata = /^<!\[CDATA\[[\s\S]*?\]\]>$/;
-    return (
-      openTag.test(tag) ||
-      closeTag.test(tag) ||
-      comment.test(tag) ||
-      proc.test(tag) ||
-      decl.test(tag) ||
-      cdata.test(tag)
-    );
-  }
 
   text = text.replace(htmlCandidate, (m) => {
     if (isHtmlTag(m)) {

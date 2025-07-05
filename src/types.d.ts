@@ -5,7 +5,8 @@ export type TsmarkNodeType =
   | 'list'
   | 'list_item'
   | 'blockquote'
-  | 'thematic_break';
+  | 'thematic_break'
+  | 'html';
 export type TsmarkNode =
   | {
     type: 'heading';
@@ -35,4 +36,8 @@ export type TsmarkNode =
   }
   | {
     type: 'thematic_break';
+  }
+  | {
+    type: 'html';
+    content: string;
   };
