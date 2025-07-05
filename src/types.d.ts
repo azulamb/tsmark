@@ -1,4 +1,11 @@
-export type TsmarkNodeType = 'heading' | 'paragraph' | 'code_block';
+export type TsmarkNodeType =
+  | 'heading'
+  | 'paragraph'
+  | 'code_block'
+  | 'list'
+  | 'list_item'
+  | 'blockquote'
+  | 'thematic_break';
 export type TsmarkNode =
   | {
     type: 'heading';
@@ -12,4 +19,20 @@ export type TsmarkNode =
   | {
     type: 'code_block';
     content: string;
+  }
+  | {
+    type: 'list';
+    ordered: boolean;
+    items: TsmarkNode[];
+  }
+  | {
+    type: 'list_item';
+    children: TsmarkNode[];
+  }
+  | {
+    type: 'blockquote';
+    children: TsmarkNode[];
+  }
+  | {
+    type: 'thematic_break';
   };
