@@ -185,7 +185,7 @@ export function parse(md: string): TsmarkNode[] {
     if (line.trim() !== '') {
       const paraLines: string[] = [];
       while (i < lines.length && lines[i].trim() !== '') {
-        if (/^\s{0,3}[-+*]\s+/.test(lines[i])) break;
+        if (/^\s{0,3}[-+*][ \t]+/.test(lines[i])) break;
         paraLines.push(lines[i]);
         i++;
       }
