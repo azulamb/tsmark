@@ -90,11 +90,11 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // list
-    const listItemMatch = line.match(/^(\s{0,3})([-+*]) +(.*)$/);
+    const listItemMatch = line.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
     if (listItemMatch) {
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
-        const m = lines[i].match(/^(\s{0,3})([-+*]) +(.*)$/);
+        const m = lines[i].match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
         if (!m) break;
         const markerIndent = indentWidth(m[1]) + 2;
         const itemLines: string[] = [m[3]];
@@ -188,7 +188,7 @@ export function parse(md: string): TsmarkNode[] {
         paraLines.push(lines[i]);
         i++;
       }
-      nodes.push({ type: 'paragraph', content: paraLines.join(' ') });
+      nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
       continue;
     }
 
