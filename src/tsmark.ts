@@ -235,7 +235,29 @@ function escapeHTML(text: string): string {
 }
 
 function inlineToHTML(text: string): string {
+  const placeholders: string[] = [];
+
+  // store HTML tags as placeholders
+  text = text.replace(/<\/?[A-Za-z][^>]*>/g, (m) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(m);
+    return token;
+  });
+
+  // store autolinks as placeholders
+  text = text.replace(/<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*)>/g, (_, p1) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(`<a href="${encodeURI(p1)}">${escapeHTML(p1)}</a>`);
+    return token;
+  });
+  text = text.replace(/<([^\s@<>]+@[^\s@<>]+)>/g, (_, p1) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(`<a href="mailto:${p1}">${escapeHTML(p1)}</a>`);
+    return token;
+  });
+
   let out = escapeHTML(text);
+
   // handle backslash escapes for punctuation characters
   // see CommonMark Spec 6. Backslash escapes
   out = out.replace(/\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
@@ -248,6 +270,10 @@ function inlineToHTML(text: string): string {
   out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
   out = out.replace(/ {2}\n/g, '<br />\n');
+
+  // restore placeholders
+  out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
+
   return out;
 }
 
