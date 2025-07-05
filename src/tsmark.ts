@@ -237,13 +237,6 @@ function escapeHTML(text: string): string {
 function inlineToHTML(text: string): string {
   const placeholders: string[] = [];
 
-  // store HTML tags as placeholders
-  text = text.replace(/<\/?[A-Za-z][^>]*>/g, (m) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(m);
-    return token;
-  });
-
   // store autolinks as placeholders
   text = text.replace(/<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*)>/g, (_, p1) => {
     const token = `\u0000${placeholders.length}\u0000`;
@@ -253,6 +246,13 @@ function inlineToHTML(text: string): string {
   text = text.replace(/<([^\s@<>]+@[^\s@<>]+)>/g, (_, p1) => {
     const token = `\u0000${placeholders.length}\u0000`;
     placeholders.push(`<a href="mailto:${p1}">${escapeHTML(p1)}</a>`);
+    return token;
+  });
+
+  // store HTML tags as placeholders
+  text = text.replace(/<\/?[A-Za-z](?![A-Za-z0-9+.-]*:)[^>]*>/g, (m) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(m);
     return token;
   });
 
