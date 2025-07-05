@@ -41,6 +41,67 @@ export function parse(md: string): TsmarkNode[] {
   while (i < lines.length) {
     const line = lines[i];
 
+    // thematic break
+    if (
+      /^ {0,3}(\*\s*){3,}$/.test(line) || /^ {0,3}(-\s*){3,}$/.test(line) ||
+      /^ {0,3}(_\s*){3,}$/.test(line)
+    ) {
+      nodes.push({ type: 'thematic_break' });
+      i++;
+      continue;
+    }
+
+    // blockquote
+    const bqMatch = line.match(/^ {0,3}> ?(.*)$/);
+    if (bqMatch) {
+      const bqLines: string[] = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^ {0,3}> ?(.*)$/);
+        if (m) {
+          bqLines.push(m[1]);
+          i++;
+        } else if (lines[i].trim() === '') {
+          bqLines.push('');
+          i++;
+        } else break;
+      }
+      const children = parse(bqLines.join('\n'));
+      nodes.push({ type: 'blockquote', children });
+      continue;
+    }
+
+    // list
+    const listItemMatch = line.match(/^ {0,3}([-+*]) +(.*)$/);
+    if (listItemMatch) {
+      const items: TsmarkNode[] = [];
+      while (i < lines.length) {
+        const m = lines[i].match(/^ {0,3}([-+*]) +(.*)$/);
+        if (!m) break;
+        const itemLines: string[] = [m[2]];
+        i++;
+        while (i < lines.length) {
+          if (/^\s*$/.test(lines[i])) {
+            itemLines.push('');
+            i++;
+            if (i < lines.length && /^\s/.test(lines[i])) {
+              continue;
+            } else {
+              break;
+            }
+          } else if (/^\s/.test(lines[i])) {
+            itemLines.push(lines[i]);
+            i++;
+          } else {
+            break;
+          }
+        }
+        const children = parse(itemLines.join('\n'));
+        items.push({ type: 'list_item', children });
+      }
+      nodes.push({ type: 'list', ordered: false, items });
+      continue;
+    }
+
     // fenced code block
     const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
     if (fenceMatch) {
@@ -119,14 +180,49 @@ export function parse(md: string): TsmarkNode[] {
 
 function nodeToHTML(node: TsmarkNode): string {
   if (node.type === 'heading') {
-    return `<h${node.level}>${node.content}</h${node.level}>`;
+    return `<h${node.level}>${inlineToHTML(node.content)}</h${node.level}>`;
   } else if (node.type === 'paragraph') {
-    return `<p>${node.content}</p>`;
+    return `<p>${inlineToHTML(node.content)}</p>`;
   } else if (node.type === 'code_block') {
     const escaped = node.content.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     return `<pre><code>${escaped}</code></pre>`;
+  } else if (node.type === 'list') {
+    const items = node.items.map((it) => {
+      if (it.type === 'list_item') {
+        return `<li>\n${it.children.map(nodeToHTML).join('\n')}\n</li>`;
+      }
+      return `<li>${nodeToHTML(it)}</li>`;
+    }).join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  } else if (node.type === 'list_item') {
+    return node.children.map(nodeToHTML).join('');
+  } else if (node.type === 'blockquote') {
+    return `<blockquote>\n${
+      node.children.map(nodeToHTML).join('')
+    }\n</blockquote>`;
+  } else if (node.type === 'thematic_break') {
+    return '<hr />';
   }
   return '';
+}
+
+function escapeHTML(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
+    />/g,
+    '&gt;',
+  );
+}
+
+function inlineToHTML(text: string): string {
+  let out = escapeHTML(text);
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  out = out.replace(/ {2}\n/g, '<br />\n');
+  return out;
 }
 
 export function convertToHTML(md: string): string {
