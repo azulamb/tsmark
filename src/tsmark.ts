@@ -431,9 +431,12 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     return str.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
   }
 
-  // decode character references before further processing
+  // store character references as placeholders so that they do not affect
+  // emphasis and other inline processing
   text = text.replace(/&(#x?[0-9a-f]+|[A-Za-z][A-Za-z0-9]*);/gi, (m) => {
-    return decodeEntities(m);
+    const token = `\u0003${placeholders.length}\u0003`;
+    placeholders.push(escapeHTML(decodeEntities(m)));
+    return token;
   });
 
   // inline images (direct)
@@ -571,6 +574,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
   out = out.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
   out = out.replace(/\u0002(\d+)\u0002/g, (_, idx) => placeholders[+idx]);
+  out = out.replace(/\u0003(\d+)\u0003/g, (_, idx) => placeholders[+idx]);
 
   return out;
 }
