@@ -14,10 +14,10 @@ function indentWidth(line: string): number {
   return col;
 }
 
-function stripIndent(line: string): string {
+function stripColumns(line: string, count: number): string {
   let col = 0;
   let idx = 0;
-  while (col < 4 && idx < line.length) {
+  while (col < count && idx < line.length) {
     const ch = line[idx];
     if (ch === ' ') {
       col++;
@@ -31,6 +31,10 @@ function stripIndent(line: string): string {
     }
   }
   return line.slice(idx);
+}
+
+function stripIndent(line: string): string {
+  return stripColumns(line, 4);
 }
 
 export function parse(md: string): TsmarkNode[] {
@@ -71,25 +75,27 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // list
-    const listItemMatch = line.match(/^ {0,3}([-+*]) +(.*)$/);
+    const listItemMatch = line.match(/^(\s{0,3})([-+*]) +(.*)$/);
     if (listItemMatch) {
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
-        const m = lines[i].match(/^ {0,3}([-+*]) +(.*)$/);
+        const m = lines[i].match(/^(\s{0,3})([-+*]) +(.*)$/);
         if (!m) break;
-        const itemLines: string[] = [m[2]];
+        const markerIndent = indentWidth(m[1]) + 2;
+        const itemLines: string[] = [m[3]];
         i++;
         while (i < lines.length) {
+          const ind = indentWidth(lines[i]);
           if (/^\s*$/.test(lines[i])) {
             itemLines.push('');
             i++;
-            if (i < lines.length && /^\s/.test(lines[i])) {
+            if (i < lines.length && indentWidth(lines[i]) >= markerIndent) {
               continue;
             } else {
               break;
             }
-          } else if (/^\s/.test(lines[i])) {
-            itemLines.push(lines[i]);
+          } else if (ind >= markerIndent) {
+            itemLines.push(stripColumns(lines[i], markerIndent));
             i++;
           } else {
             break;
