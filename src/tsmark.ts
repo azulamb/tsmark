@@ -221,7 +221,10 @@ function nodeToHTML(node: TsmarkNode): string {
           if (rest.length === 0) {
             return `<li>${firstHTML}</li>`;
           }
-          return `<li>${firstHTML}\n${restHTML}\n</li>`;
+          if (rest.every((n) => n.type === 'list')) {
+            return `<li>${firstHTML}\n${restHTML}\n</li>`;
+          }
+          return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
         }
         const inner = [first, ...rest].map(nodeToHTML).join('\n');
         return `<li>\n${inner}\n</li>`;
@@ -251,6 +254,16 @@ function escapeHTML(text: string): string {
 function inlineToHTML(text: string): string {
   const placeholders: string[] = [];
 
+  // handle backslash escapes by storing them as placeholders
+  text = text.replace(
+    /\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g,
+    (_, p1) => {
+      const token = `\u0001${placeholders.length}\u0001`;
+      placeholders.push(escapeHTML(p1));
+      return token;
+    },
+  );
+
   // store autolinks as placeholders
   text = text.replace(/<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*)>/g, (_, p1) => {
     const token = `\u0000${placeholders.length}\u0000`;
@@ -272,11 +285,9 @@ function inlineToHTML(text: string): string {
 
   let out = escapeHTML(text);
 
-  // handle backslash escapes for punctuation characters
-  // see CommonMark Spec 6. Backslash escapes
-  out = out.replace(/\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
   // backslash at line end creates hard line break
   out = out.replace(/\\\n/g, '<br />\n');
+
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
@@ -287,6 +298,7 @@ function inlineToHTML(text: string): string {
 
   // restore placeholders
   out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
+  out = out.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
 
   return out;
 }
