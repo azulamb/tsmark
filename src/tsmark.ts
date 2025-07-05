@@ -185,6 +185,7 @@ export function parse(md: string): TsmarkNode[] {
     if (line.trim() !== '') {
       const paraLines: string[] = [];
       while (i < lines.length && lines[i].trim() !== '') {
+        if (/^\s{0,3}[-+*]\s+/.test(lines[i])) break;
         paraLines.push(lines[i]);
         i++;
       }
@@ -210,7 +211,20 @@ function nodeToHTML(node: TsmarkNode): string {
   } else if (node.type === 'list') {
     const items = node.items.map((it) => {
       if (it.type === 'list_item') {
-        return `<li>\n${it.children.map(nodeToHTML).join('\n')}\n</li>`;
+        const [first, ...rest] = it.children;
+        if (!first) {
+          return '<li></li>';
+        }
+        if (first.type === 'paragraph') {
+          const firstHTML = inlineToHTML(first.content);
+          const restHTML = rest.map(nodeToHTML).join('\n');
+          if (rest.length === 0) {
+            return `<li>${firstHTML}</li>`;
+          }
+          return `<li>${firstHTML}\n${restHTML}\n</li>`;
+        }
+        const inner = [first, ...rest].map(nodeToHTML).join('\n');
+        return `<li>\n${inner}\n</li>`;
       }
       return `<li>${nodeToHTML(it)}</li>`;
     }).join('\n');
