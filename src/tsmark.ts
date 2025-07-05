@@ -254,6 +254,13 @@ function escapeHTML(text: string): string {
 function inlineToHTML(text: string): string {
   const placeholders: string[] = [];
 
+  // store code spans as placeholders before any other processing
+  text = text.replace(/(`+)([\s\S]*?)\1/g, (_, _p1, p2) => {
+    const token = `\u0002${placeholders.length}\u0002`;
+    placeholders.push(`<code>${escapeHTML(p2.trim())}</code>`);
+    return token;
+  });
+
   // handle backslash escapes by storing them as placeholders
   text = text.replace(
     /\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g,
@@ -288,7 +295,6 @@ function inlineToHTML(text: string): string {
   // backslash at line end creates hard line break
   out = out.replace(/\\\n/g, '<br />\n');
 
-  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
@@ -299,6 +305,7 @@ function inlineToHTML(text: string): string {
   // restore placeholders
   out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
   out = out.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
+  out = out.replace(/\u0002(\d+)\u0002/g, (_, idx) => placeholders[+idx]);
 
   return out;
 }
