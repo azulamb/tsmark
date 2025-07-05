@@ -356,25 +356,37 @@ function decodeEntities(text: string): string {
     (_, body: string) => {
       const lower = body.toLowerCase();
       if (lower.startsWith('#x')) {
-        const cp = parseInt(body.slice(2), 16);
+        const digits = body.slice(2);
+        if (digits.length === 0 || digits.length > 6) {
+          return `&${body};`;
+        }
+        const cp = parseInt(digits, 16);
         if (
           Number.isNaN(cp) ||
           cp === 0 ||
           cp > 0x10ffff ||
           (0xd800 <= cp && cp <= 0xdfff)
         ) {
-          return `&${body};`;
+          return '\uFFFD';
         }
         return String.fromCodePoint(cp);
       } else if (lower.startsWith('#')) {
-        const cp = parseInt(body.slice(1), 10);
+        const digits = body.slice(1);
+        if (
+          digits.length === 0 ||
+          digits.length > 7 ||
+          /[^0-9]/.test(digits)
+        ) {
+          return `&${body};`;
+        }
+        const cp = parseInt(digits, 10);
         if (
           Number.isNaN(cp) ||
           cp === 0 ||
           cp > 0x10ffff ||
           (0xd800 <= cp && cp <= 0xdfff)
         ) {
-          return `&${body};`;
+          return '\uFFFD';
         }
         return String.fromCodePoint(cp);
       }
