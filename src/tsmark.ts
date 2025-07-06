@@ -98,6 +98,7 @@ export function parse(md: string): TsmarkNode[] {
     const bqMatch = stripped.match(/^ {0,3}>(.*)$/);
     if (bqMatch) {
       const bqLines: string[] = [];
+      let prevBlank = false;
       while (i < lines.length) {
         const current = stripLazy(lines[i]);
         const m = current.match(/^ {0,3}>(.*)$/);
@@ -110,18 +111,22 @@ export function parse(md: string): TsmarkNode[] {
           }
           rest = rest.replace(/\t/g, '    ');
           bqLines.push(rest);
+          prevBlank = false;
           i++;
         } else if (current.trim() === '') {
           bqLines.push('');
+          prevBlank = true;
           i++;
         } else if (
           indentWidth(lines[i]) <= 3 &&
           !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
           !/^(?:\s*)(`{3,}|~{3,})/.test(current)
         ) {
+          if (prevBlank) break;
           bqLines.push(
             LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
           );
+          prevBlank = false;
           i++;
         } else break;
       }
@@ -194,7 +199,8 @@ export function parse(md: string): TsmarkNode[] {
 
     // fenced code block
     const fenceMatch = stripped.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
-    if (fenceMatch) {
+    if (fenceMatch && indentWidth(fenceMatch[1]) <= 3) {
+      const fenceIndent = indentWidth(fenceMatch[1]);
       const fence = fenceMatch[2];
       const info = fenceMatch[3].trim();
       const language = info
@@ -202,15 +208,25 @@ export function parse(md: string): TsmarkNode[] {
         : undefined;
       i++;
       const codeLines: string[] = [];
-      while (i < lines.length && !stripLazy(lines[i]).startsWith(fence)) {
-        codeLines.push(stripLazy(lines[i]));
+      while (
+        i < lines.length &&
+        !stripLazy(lines[i]).trimStart().startsWith(fence)
+      ) {
+        codeLines.push(stripColumns(stripLazy(lines[i]), fenceIndent));
         i++;
       }
-      // skip closing fence
-      if (i < lines.length) i++;
+      const closed = i < lines.length && indentWidth(lines[i]) <= 3 &&
+        stripLazy(lines[i]).trimStart().startsWith(fence);
+      if (closed) i++; // skip closing fence
+      else {
+        while (codeLines.length > 0 && codeLines[codeLines.length - 1] === '') {
+          codeLines.pop();
+        }
+      }
+      const body = codeLines.join('\n');
       nodes.push({
         type: 'code_block',
-        content: codeLines.join('\n') + '\n',
+        content: body + (codeLines.length > 0 ? '\n' : ''),
         language,
       });
       continue;
@@ -221,13 +237,21 @@ export function parse(md: string): TsmarkNode[] {
       const codeLines: string[] = [];
       while (
         i < lines.length &&
-        (indentWidth(lines[i]) >= 4 || stripLazy(lines[i]) === '')
+        (indentWidth(lines[i]) >= 4 || stripLazy(lines[i]).trim() === '')
       ) {
         codeLines.push(stripLazy(lines[i]));
         i++;
       }
 
-      while (codeLines.length > 0 && codeLines[codeLines.length - 1] === '') {
+      while (
+        codeLines.length > 0 && codeLines[0].trim() === ''
+      ) {
+        codeLines.shift();
+      }
+
+      while (
+        codeLines.length > 0 && codeLines[codeLines.length - 1].trim() === ''
+      ) {
         codeLines.pop();
       }
 
@@ -335,7 +359,9 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'paragraph') {
     return `<p>${inlineToHTML(node.content, refs)}</p>`;
   } else if (node.type === 'code_block') {
-    const escaped = node.content.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const escaped = node.content.replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
     const langClass = node.language
       ? ` class="language-${escapeHTML(node.language)}"`
       : '';
