@@ -377,8 +377,8 @@ export function parse(md: string): TsmarkNode[] {
         const htmlLines: string[] = [stripped];
         i++;
         if (['pre', 'script', 'style', 'textarea'].includes(tag)) {
-          let closed = false;
-          while (i < lines.length) {
+          let closed = new RegExp(`</${tag}>`, 'i').test(stripped);
+          while (!closed && i < lines.length) {
             const ln = stripLazy(lines[i]);
             htmlLines.push(ln);
             if (new RegExp(`</${tag}>`, 'i').test(ln)) {
@@ -401,6 +401,33 @@ export function parse(md: string): TsmarkNode[] {
             htmlLines.push(stripLazy(lines[i]));
             i++;
           }
+        }
+        nodes.push({ type: 'html', content: htmlLines.join('\n') });
+        continue;
+      }
+
+      if (/^ {0,3}(?:<!--|<\?|<![A-Z]|<!\[CDATA\[)/.test(stripped)) {
+        const htmlLines: string[] = [stripped];
+        const closing = stripped.trimStart().startsWith('<!--')
+          ? /-->/
+          : stripped.trimStart().startsWith('<?')
+          ? /\?>/
+          : stripped.trimStart().startsWith('<![CDATA[')
+          ? /\]\]>/
+          : />/;
+        if (!closing.test(stripped)) {
+          i++;
+          while (i < lines.length) {
+            const ln = stripLazy(lines[i]);
+            htmlLines.push(ln);
+            if (closing.test(ln)) {
+              i++;
+              break;
+            }
+            i++;
+          }
+        } else {
+          i++;
         }
         nodes.push({ type: 'html', content: htmlLines.join('\n') });
         continue;
@@ -694,7 +721,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
   // inline images (direct)
   text = text.replace(
-    /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    /!\[((?:\\.|[^\]])*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (_, alt, href, title) => {
       const src = encodeURI(
         restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
@@ -714,7 +741,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
   // inline links (direct)
   text = text.replace(
-    /\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    /\[((?:\\.|[^\]])+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (_, textContent, href, title) => {
       const token = `\u0000${placeholders.length}\u0000`;
       const decodedHref = decodeEntities(
@@ -728,7 +755,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         }"`
         : '';
       placeholders.push(
-        `<a href="${encodeURI(decodedHref)}"${titleAttr}>${textContent}</a>`,
+        `<a href="${encodeURI(decodedHref)}"${titleAttr}>${
+          escapeHTML(unescapeMd(textContent))
+        }</a>`,
       );
       return token;
     },
@@ -736,22 +765,25 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
   // reference-style images
   if (refs) {
-    text = text.replace(/!\[([^\]]*)\]\[([^\]]*)\]/g, (m, alt, lab) => {
-      const label = (lab || alt).toLowerCase();
-      const def = refs.get(label);
-      if (!def) return m;
-      let html = `<img src="${encodeURI(def.url)}" alt="${
-        escapeHTML(stripMd(alt))
-      }"`;
-      if (def.title) html += ` title="${escapeHTML(def.title)}"`;
-      html += ' />';
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    });
+    text = text.replace(
+      /!\[((?:\\.|[^\]])*)\]\[((?:\\.|[^\]])*)\]/g,
+      (m, alt, lab) => {
+        const label = unescapeMd(lab || alt).toLowerCase();
+        const def = refs.get(label);
+        if (!def) return m;
+        let html = `<img src="${encodeURI(def.url)}" alt="${
+          escapeHTML(stripMd(alt))
+        }"`;
+        if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+        html += ' />';
+        const token = `\u0000${placeholders.length}\u0000`;
+        placeholders.push(html);
+        return token;
+      },
+    );
 
-    text = text.replace(/!\[([^\]]+)\](?!\()/g, (m, alt) => {
-      const label = alt.toLowerCase();
+    text = text.replace(/!\[((?:\\.|[^\]])+)\](?!\()/g, (m, alt) => {
+      const label = unescapeMd(alt).toLowerCase();
       const def = refs.get(label);
       if (!def) return m;
       let html = `<img src="${encodeURI(def.url)}" alt="${
@@ -765,23 +797,28 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     });
 
     // reference-style links
-    text = text.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (m, textContent, lab) => {
-      const key = (lab || textContent).toLowerCase();
-      const def = refs.get(key);
-      if (!def) return m;
-      const token = `\u0000${placeholders.length}\u0000`;
-      const titleAttr = def.title
-        ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
-        : '';
-      const href = encodeURI(decodeEntities(unescapeMd(def.url)));
-      placeholders.push(
-        `<a href="${href}"${titleAttr}>${textContent}</a>`,
-      );
-      return token;
-    });
+    text = text.replace(
+      /\[((?:\\.|[^\]])+)\]\[((?:\\.|[^\]])*)\]/g,
+      (m, textContent, lab) => {
+        const key = unescapeMd(lab || textContent).toLowerCase();
+        const def = refs.get(key);
+        if (!def) return m;
+        const token = `\u0000${placeholders.length}\u0000`;
+        const titleAttr = def.title
+          ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
+          : '';
+        const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+        placeholders.push(
+          `<a href="${href}"${titleAttr}>${
+            escapeHTML(unescapeMd(textContent))
+          }</a>`,
+        );
+        return token;
+      },
+    );
 
-    text = text.replace(/\[([^\]]+)\](?!\()/g, (m, textContent) => {
-      const def = refs.get(textContent.toLowerCase());
+    text = text.replace(/\[((?:\\.|[^\]])+)\](?!\()/g, (m, textContent) => {
+      const def = refs.get(unescapeMd(textContent).toLowerCase());
       if (!def) return m;
       const token = `\u0000${placeholders.length}\u0000`;
       const titleAttr = def.title
@@ -789,7 +826,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         : '';
       const href = encodeURI(decodeEntities(unescapeMd(def.url)));
       placeholders.push(
-        `<a href="${href}"${titleAttr}>${textContent}</a>`,
+        `<a href="${href}"${titleAttr}>${
+          escapeHTML(unescapeMd(textContent))
+        }</a>`,
       );
       return token;
     });
@@ -845,23 +884,38 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 }
 
 export function convertToHTML(md: string): string {
-  const refDef = /^ {0,3}\[([^\]]+)\]:\s*(\S+)(?:\s+"([^"]+)")?\s*$/;
+  const startDef = /^ {0,3}\[((?:\\.|[^\\\]])+)\]:\s*(.*)$/;
+  const contDef = /^\s+(.*)$/;
+  const titlePattern =
+    /^(<[^>]*>|\S+)(?:\s+(?:"([^"]+)"|'([^']+)'|\(([^)]+)\)))?\s*$/s;
   const refs = new Map<string, RefDef>();
   const filtered: string[] = [];
-  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
-    const m = line.match(refDef);
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const first = lines[i];
+    const m = first.match(startDef);
     if (m) {
-      let url = m[2];
-      if (url.startsWith('<') && url.endsWith('>')) {
-        url = url.slice(1, -1);
+      let rest = m[2];
+      while (i + 1 < lines.length && contDef.test(lines[i + 1])) {
+        rest += '\n' + lines[i + 1].replace(/^\s+/, '');
+        i++;
       }
-      refs.set(m[1].toLowerCase(), {
-        url: unescapeMd(url),
-        title: m[3] ? unescapeMd(m[3]) : undefined,
-      });
-    } else {
-      filtered.push(line);
+      rest = rest.trim();
+      const m2 = rest.match(titlePattern);
+      if (m2) {
+        let url = m2[1];
+        if (url.startsWith('<') && url.endsWith('>')) {
+          url = url.slice(1, -1);
+        }
+        const title = m2[2] || m2[3] || m2[4];
+        refs.set(unescapeMd(m[1]).toLowerCase(), {
+          url: unescapeMd(url),
+          title: title ? unescapeMd(title) : undefined,
+        });
+        continue;
+      }
     }
+    filtered.push(first);
   }
   const nodes = parse(filtered.join('\n'));
   return nodes.map((node) => {
