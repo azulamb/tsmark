@@ -4,9 +4,9 @@ import { convertToHTML } from '../src/tsmark.ts';
 
 const testIds = Deno.args.map((arg) => {
   const id = parseInt(arg, 10);
-  return isNaN(id) ? 0 : id;
+  return isNaN(id) ? -1 : id;
 }).filter((id) => {
-  return 0 < id;
+  return 0 <= id;
 });
 
 const testCases = 0 < testIds.length
@@ -17,7 +17,8 @@ const testCases = 0 < testIds.length
 
 let id = 0;
 for (const test of testCases) {
-  const showId = 0 < testIds.length ? testIds[id] : ++id;
+  const showId = 0 < testIds.length ? testIds[id] : id;
+  ++id;
   Deno.test(`test[${showId}]`, () => {
     const actual = convertToHTML(test.markdown);
     assert.assertEquals(actual, test.html, `Test failed[${test.example}]:`);
