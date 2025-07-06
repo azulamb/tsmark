@@ -819,15 +819,18 @@ function inlineToHTML(
 
   // inline links (direct)
   text = text.replace(
-    /\[([^\[\]]*)\]\((<[^>]*>|[^\s)]+)(?:\s+"([^"]+)")?\)/g,
-    (m, textContent, href, title) => {
-      if (href.startsWith('<') && !href.endsWith('>')) return m;
-      const token = `\u0000${placeholders.length}\u0000`;
-      let link = restoreEntities(restoreEscapes(href));
-      if (link.startsWith('<') && link.endsWith('>')) {
-        link = link.slice(1, -1);
+    /\[([^\[\]]*)\]\(((?:\\.|[^\\)])*)\)/g,
+    (m, textContent, inside) => {
+      const m2 = inside.match(
+        /^\s*(<[^>]*>|[^\s<>]+)(?:\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?\s*$/s,
+      );
+      if (!m2) return m;
+      let href = restoreEntities(restoreEscapes(m2[1]));
+      const title = m2[2] || m2[3] || m2[4];
+      if (href.startsWith('<') && href.endsWith('>')) {
+        href = href.slice(1, -1);
       }
-      const decodedHref = decodeEntities(unescapeMd(link));
+      const decodedHref = decodeEntities(unescapeMd(href));
       const titleAttr = title
         ? ` title="${
           escapeHTML(
@@ -836,6 +839,7 @@ function inlineToHTML(
         }"`
         : '';
       const inner = inlineToHTML(textContent, refs, placeholders);
+      const token = `\u0000${placeholders.length}\u0000`;
       placeholders.push(
         `<a href="${encodeHref(decodedHref)}"${titleAttr}>${inner}</a>`,
       );
