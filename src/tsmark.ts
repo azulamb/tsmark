@@ -716,9 +716,11 @@ function decodeEntities(text: string): string {
   );
 }
 
-function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
-  const placeholders: string[] = [];
-
+function inlineToHTML(
+  text: string,
+  refs?: Map<string, RefDef>,
+  placeholders: string[] = [],
+): string {
   // store code spans as placeholders before any other processing
   text = text.replace(/(?<!\\)(`+)([\s\S]*?)\1/g, (_, p1, p2) => {
     let content = p2.replace(/\n/g, ' ');
@@ -817,7 +819,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
   // inline links (direct)
   text = text.replace(
-    /\[((?:\\.|[^\]])*)\]\((<[^>]*>|[^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    /\[([^\[\]]*)\]\((<[^>]*>|[^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (m, textContent, href, title) => {
       if (href.startsWith('<') && !href.endsWith('>')) return m;
       const token = `\u0000${placeholders.length}\u0000`;
@@ -833,10 +835,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
           )
         }"`
         : '';
+      const inner = inlineToHTML(textContent, refs, placeholders);
       placeholders.push(
-        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${
-          escapeHTML(unescapeMd(textContent))
-        }</a>`,
+        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${inner}</a>`,
       );
       return token;
     },
@@ -845,7 +846,8 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   // inline links with empty destination
   text = text.replace(/\[([^\]]*)\]\(\)/g, (_, textContent) => {
     const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(`<a href="">${escapeHTML(unescapeMd(textContent))}</a>`);
+    const inner = inlineToHTML(textContent, refs, placeholders);
+    placeholders.push(`<a href="">${inner}</a>`);
     return token;
   });
 
@@ -916,10 +918,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
           ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
           : '';
         const href = encodeHref(decodeEntities(unescapeMd(def.url)));
+        const inner = inlineToHTML(textContent, refs, placeholders);
         placeholders.push(
-          `<a href="${href}"${titleAttr}>${
-            escapeHTML(unescapeMd(textContent))
-          }</a>`,
+          `<a href="${href}"${titleAttr}>${inner}</a>`,
         );
         return token;
       },
@@ -937,10 +938,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
           ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
           : '';
         const href = encodeHref(decodeEntities(unescapeMd(def.url)));
+        const inner = inlineToHTML(textContent, refs, placeholders);
         placeholders.push(
-          `<a href="${href}"${titleAttr}>${
-            escapeHTML(unescapeMd(textContent))
-          }</a>`,
+          `<a href="${href}"${titleAttr}>${inner}</a>`,
         );
         return token;
       },
