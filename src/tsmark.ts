@@ -775,7 +775,6 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   text = text.replace(
     /\[((?:\\.|[^\]])*)\]\((<[^>]*>|[^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (m, textContent, href, title) => {
-      if (href.includes('\u0001')) return m;
       if (href.startsWith('<') && !href.endsWith('>')) return m;
       const token = `\u0000${placeholders.length}\u0000`;
       let link = restoreEntities(restoreEscapes(href));
