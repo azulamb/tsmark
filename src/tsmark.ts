@@ -329,8 +329,20 @@ export function parse(md: string): TsmarkNode[] {
           if (/^\s*$/.test(current)) {
             let j = i + 1;
             while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
+            const next = j < lines.length ? stripLazy(lines[j]) : '';
+            const nextMatch = isOrdered
+              ? next.match(/^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/)
+              : next.match(/^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/);
+            const sameBullet = nextMatch &&
+              ((!isOrdered && nextMatch[2] === bulletChar) ||
+                (isOrdered && nextMatch[3] === delimChar));
             const nextInd = j < lines.length ? indentWidth(lines[j]) : -1;
             const atStart = itemLines.every((ln) => ln.trim() === '');
+            if (sameBullet && nextInd <= indentWidth(m[1])) {
+              itemLoose = true;
+              i = j;
+              break;
+            }
             if (
               nextInd >= markerIndent &&
               (!atStart || nextInd >= markerIndent + 4)
@@ -577,6 +589,12 @@ export function parse(md: string): TsmarkNode[] {
             /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
             /^ {0,3}>/.test(stripLazy(lines[i])) ||
             /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
+            (() => {
+              const m = stripLazy(lines[i]).match(
+                /^ {0,3}(\d{1,9})([.)])[ \t]+/,
+              );
+              return m && m[1] === '1';
+            })() ||
             /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
             (() => {
               const m = stripLazy(lines[i]).match(/^(\s*)(`{3,}|~{3,})(.*)$/);
@@ -681,7 +699,9 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
             }
           }
           if (rest.length === 0) {
-            return `<li><p>${firstHTML}</p></li>`;
+            return node.loose
+              ? `<li>\n<p>${firstHTML}</p>\n</li>`
+              : `<li><p>${firstHTML}</p></li>`;
           }
           return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
         }
