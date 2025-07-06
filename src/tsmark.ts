@@ -325,7 +325,11 @@ export function parse(md: string): TsmarkNode[] {
             let j = i + 1;
             while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
             const nextInd = j < lines.length ? indentWidth(lines[j]) : -1;
-            if (nextInd >= markerIndent) {
+            const atStart = itemLines.every((ln) => ln.trim() === '');
+            if (
+              nextInd >= markerIndent &&
+              (!atStart || nextInd >= markerIndent + 4)
+            ) {
               itemLoose = true;
               itemLines.push('');
               i++;
