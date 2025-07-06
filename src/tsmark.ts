@@ -916,11 +916,11 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     '<strong>$1</strong>',
   );
   out = out.replace(
-    /__([^_\s](?:[^_]*[^_\s])?)__(?!_)/g,
+    /__([^_\s](?:[^_]*[^_\s])?)__/g,
     '<strong>$1</strong>',
   );
   out = out.replace(/\*([^*\s](?:[^*]*[^*\s])?)\*(?!\*)/g, '<em>$1</em>');
-  out = out.replace(/_([^_\s](?:[^_]*[^_\s])?)_(?!_)/g, '<em>$1</em>');
+  out = out.replace(/_([^_\s](?:[^_]*[^_\s])?)_/g, '<em>$1</em>');
 
   // trim spaces before emphasis at line start
   out = out.replace(/(^|\n)\s+(?=<(?:em|strong)>)/g, '$1');
