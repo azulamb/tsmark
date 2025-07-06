@@ -894,15 +894,29 @@ function inlineToHTML(
   placeholders: string[] = [],
 ): string {
   // store code spans as placeholders before any other processing
-  text = text.replace(/(?<!\\)(`+)([\s\S]*?)\1/g, (_, p1, p2) => {
-    let content = p2.replace(/\n/g, ' ');
-    if (/^\s/.test(content) && /\s$/.test(content) && content.trim() !== '') {
-      content = content.slice(1, -1);
-    }
-    const token = `\u0002${placeholders.length}\u0002`;
-    placeholders.push(`<code>${escapeHTML(content)}</code>`);
-    return token;
-  });
+  text = text.replace(
+    /(?<![\\"'=])(`+)([\s\S]*?)(?<!`)\1(?!`)/g,
+    (full, p1, p2, offset, str) => {
+      const start = offset;
+      const end = offset + full.length;
+      const lt = str.lastIndexOf('<', start);
+      const gt = str.indexOf('>', start);
+      if (lt !== -1 && gt !== -1 && lt < start && gt < end) {
+        return full;
+      }
+      let content = p2.replace(/\n/g, ' ');
+      if (
+        content.startsWith(' ') &&
+        content.endsWith(' ') &&
+        content.trim() !== ''
+      ) {
+        content = content.slice(1, -1);
+      }
+      const token = `\u0002${placeholders.length}\u0002`;
+      placeholders.push(`<code>${escapeHTML(content)}</code>`);
+      return token;
+    },
+  );
 
   // store autolinks as placeholders before handling escapes
   text = text.replace(
