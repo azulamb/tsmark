@@ -237,9 +237,7 @@ export function parse(md: string): TsmarkNode[] {
           prevBlank = false;
           i++;
         } else if (current.trim() === '') {
-          bqLines.push('');
-          prevBlank = true;
-          i++;
+          break;
         } else if (
           fence === null &&
           indentWidth(lines[i]) <= 3 &&
