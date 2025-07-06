@@ -377,13 +377,24 @@ export function parse(md: string): TsmarkNode[] {
         const htmlLines: string[] = [stripped];
         i++;
         if (['pre', 'script', 'style', 'textarea'].includes(tag)) {
+          let closed = false;
           while (i < lines.length) {
-            htmlLines.push(stripLazy(lines[i]));
-            if (new RegExp(`</${tag}>`, 'i').test(stripLazy(lines[i]))) {
+            const ln = stripLazy(lines[i]);
+            htmlLines.push(ln);
+            if (new RegExp(`</${tag}>`, 'i').test(ln)) {
               i++;
+              closed = true;
               break;
             }
             i++;
+          }
+          if (!closed) {
+            while (
+              htmlLines.length > 0 &&
+              htmlLines[htmlLines.length - 1].trim() === ''
+            ) {
+              htmlLines.pop();
+            }
           }
         } else {
           while (i < lines.length && stripLazy(lines[i]).trim() !== '') {
