@@ -783,6 +783,13 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     },
   );
 
+  // inline links with empty destination
+  text = text.replace(/\[([^\]]+)\]\(\)/g, (_, textContent) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(`<a href="">${escapeHTML(unescapeMd(textContent))}</a>`);
+    return token;
+  });
+
   // reference-style images
   if (refs) {
     text = text.replace(
