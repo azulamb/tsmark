@@ -317,16 +317,40 @@ export function parse(md: string): TsmarkNode[] {
           ? 1
           : Math.min(totalSpaces, 4);
         const markerIndent = markerBase + spacesAfter;
-        const itemLines: string[] = [
-          stripColumnsFrom(after, spacesAfter, markerBase),
-        ];
+        const firstLine = stripColumnsFrom(after, spacesAfter, markerBase);
+        const itemLines: string[] = [firstLine];
         let itemLoose = false;
+        let fence: { char: string; len: number } | null = null;
+        const firstFm = firstLine.match(/^(\s*)(`{3,}|~{3,})/);
+        if (firstFm) {
+          fence = { char: firstFm[2][0], len: firstFm[2].length };
+        }
         i++;
         let prevBlank = false;
         while (i < lines.length) {
           const ind = indentWidth(lines[i]);
           const current = stripLazy(lines[i]);
+          const fm = current.match(/^(\s*)(`{3,}|~{3,})/);
+          if (fm && indentWidth(fm[1]) <= 3) {
+            const ch = fm[2][0];
+            const len = fm[2].length;
+            if (!fence) {
+              fence = { char: ch, len };
+            } else if (fence.char === ch && len >= fence.len) {
+              fence = null;
+            }
+            itemLines.push(stripColumns(lines[i], markerIndent));
+            i++;
+            prevBlank = false;
+            continue;
+          }
           if (/^\s*$/.test(current)) {
+            if (fence) {
+              itemLines.push('');
+              i++;
+              prevBlank = true;
+              continue;
+            }
             let j = i + 1;
             while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
             const next = j < lines.length ? stripLazy(lines[j]) : '';
@@ -338,16 +362,25 @@ export function parse(md: string): TsmarkNode[] {
                 (isOrdered && nextMatch[3] === delimChar));
             const nextInd = j < lines.length ? indentWidth(lines[j]) : -1;
             const atStart = itemLines.every((ln) => ln.trim() === '');
-            if (sameBullet && nextInd <= indentWidth(m[1])) {
+            if (sameBullet && nextInd - indentWidth(m[1]) <= 3) {
               itemLoose = true;
               i = j;
               break;
             }
-            if (
-              nextInd >= markerIndent &&
-              (!atStart || nextInd >= markerIndent + 4)
-            ) {
-              itemLoose = true;
+            if (nextInd >= markerIndent + 4) {
+              itemLines.push('');
+              i++;
+              prevBlank = true;
+              continue;
+            }
+            if (nextInd >= markerIndent && !atStart) {
+              const prevLine = itemLines[itemLines.length - 1] ?? '';
+              const prevBullet = isOrdered
+                ? /^\s*\d+[.)]/.test(prevLine)
+                : /^\s*[-+*]/.test(prevLine);
+              if (!prevBullet) {
+                itemLoose = true;
+              }
               itemLines.push('');
               i++;
               prevBlank = true;
@@ -376,6 +409,10 @@ export function parse(md: string): TsmarkNode[] {
           }
         }
         const children = parse(itemLines.join('\n'));
+        const paraCount = children.filter((c) => c.type === 'paragraph').length;
+        if (paraCount > 1) {
+          itemLoose = true;
+        }
         items.push({ type: 'list_item', children, loose: itemLoose });
       }
       const listLoose = items.some((it) => (it as any).loose);
@@ -694,9 +731,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
             if (rest.length === 0) {
               return `<li>${firstHTML}</li>`;
             }
-            if (rest.every((n) => n.type === 'list')) {
-              return `<li>${firstHTML}\n${restHTML}\n</li>`;
-            }
+            return `<li>${firstHTML}\n${restHTML}\n</li>`;
           }
           if (rest.length === 0) {
             return node.loose
