@@ -629,6 +629,14 @@ function unescapeMd(text: string): string {
   return text.replace(/\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
 }
 
+function caseFold(str: string): string {
+  return str.toLowerCase().replace(/\u00DF/g, 'ss');
+}
+
+function normalizeLabel(text: string): string {
+  return caseFold(text).replace(/\s+/g, ' ').trim();
+}
+
 const namedEntities: Record<string, string> = {
   quot: '"',
   amp: '&',
@@ -738,6 +746,12 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     return str.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
   }
 
+  function restoreEscapesForKey(str: string): string {
+    return str.replace(/\u0001(\d+)\u0001/g, (_, idx) => {
+      return `\\${decodeEntities(placeholders[+idx])}`;
+    });
+  }
+
   function restoreEntities(str: string): string {
     return str.replace(/\u0003(\d+)\u0003/g, (_, idx) => placeholders[+idx]);
   }
@@ -748,6 +762,20 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     const token = `\u0003${placeholders.length}\u0003`;
     placeholders.push(escapeHTML(decodeEntities(m)));
     return token;
+  });
+
+  // store HTML tags as placeholders before processing links
+  text = text.replace(htmlCandidate, (m, offset: number, str: string) => {
+    if (isHtmlTag(m) && (offset === 0 || str[offset - 1] !== '(')) {
+      let html = m;
+      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
+        html = html.replace(/>$/, '&gt;');
+      }
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    }
+    return m;
   });
 
   // inline images (direct)
@@ -808,10 +836,11 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   // reference-style images
   if (refs) {
     text = text.replace(
-      /!\[((?:\\.|[^\]])*)\]\[((?:\\.|[^\]])*)\]/g,
+      /!\[((?:\\.|[^\\\[\]])*)\]\[((?:\\.|[^\\\[\]])*)\]/g,
       (m, alt, lab) => {
-        const label = unescapeMd(restoreEntities(restoreEscapes(lab || alt)))
-          .toLowerCase();
+        const label = normalizeLabel(
+          restoreEntities(restoreEscapesForKey(lab || alt)),
+        );
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
@@ -827,10 +856,11 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     );
 
     text = text.replace(
-      /!\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
+      /!\[((?:\\.|[^\\\[\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
       (m, alt) => {
-        const label = unescapeMd(restoreEntities(restoreEscapes(alt)))
-          .toLowerCase();
+        const label = normalizeLabel(
+          restoreEntities(restoreEscapesForKey(alt)),
+        );
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
@@ -847,11 +877,22 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
     // reference-style links
     text = text.replace(
-      /\[((?:\\.|[^\]])+)\]\[((?:\\.|[^\]])*)\]/g,
+      /\[((?:\\.|[^\\\[\]])+)\]\[((?:\\.|[^\\\[\]])*)\]/g,
       (m, textContent, lab) => {
-        const key = unescapeMd(
-          restoreEntities(restoreEscapes(lab || textContent)),
-        ).toLowerCase();
+        if (/\u0000(\d+)\u0000/.test(textContent)) {
+          const matches = [...textContent.matchAll(/\u0000(\d+)\u0000/g)];
+          if (
+            matches.some((ma) => {
+              const ph = placeholders[+ma[1]];
+              return typeof ph === 'string' && ph.startsWith('<a ');
+            })
+          ) {
+            return m;
+          }
+        }
+        const key = normalizeLabel(
+          restoreEntities(restoreEscapesForKey(lab || textContent)),
+        );
         const def = refs.get(key);
         if (!def) return m;
         const token = `\u0000${placeholders.length}\u0000`;
@@ -869,11 +910,10 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     );
 
     text = text.replace(
-      /\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
+      /\[((?:\\.|[^\\\[\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
       (m, textContent) => {
         const def = refs.get(
-          unescapeMd(restoreEntities(restoreEscapes(textContent)))
-            .toLowerCase(),
+          normalizeLabel(restoreEntities(restoreEscapesForKey(textContent))),
         );
         if (!def) return m;
         const token = `\u0000${placeholders.length}\u0000`;
@@ -890,21 +930,6 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       },
     );
   }
-
-  // store HTML tags as placeholders
-
-  text = text.replace(htmlCandidate, (m) => {
-    if (isHtmlTag(m)) {
-      let html = m;
-      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
-        html = html.replace(/>$/, '&gt;');
-      }
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    }
-    return m;
-  });
 
   let out = escapeHTML(text);
 
@@ -933,16 +958,25 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   out = out.replace(/ +$/g, '');
 
   // restore placeholders
-  out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
-  out = out.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
-  out = out.replace(/\u0002(\d+)\u0002/g, (_, idx) => placeholders[+idx]);
-  out = out.replace(/\u0003(\d+)\u0003/g, (_, idx) => placeholders[+idx]);
+  for (let i = 0; i < 3; i++) {
+    out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
+    out = out.replace(/\u0001(\d+)\u0001/g, (_, idx) => placeholders[+idx]);
+    out = out.replace(/\u0002(\d+)\u0002/g, (_, idx) => placeholders[+idx]);
+    out = out.replace(/\u0003(\d+)\u0003/g, (_, idx) => placeholders[+idx]);
+    if (
+      !/\u0000\d+\u0000|\u0001\d+\u0001|\u0002\d+\u0002|\u0003\d+\u0003/.test(
+        out,
+      )
+    ) {
+      break;
+    }
+  }
 
   return out;
 }
 
 export function convertToHTML(md: string): string {
-  const startDef = /^ {0,3}\[((?:\\.|[^\\\]])+)\]:\s*(.*)$/;
+  const startDef = /^ {0,3}\[((?:\\.|[^\\\[\]])+)\]:\s*(.*)$/;
   const titlePattern =
     /^(<[^>]*>|[^\s<>]+)(?:\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?\s*$/s;
   const refs = new Map<string, RefDef>();
@@ -1014,7 +1048,7 @@ export function convertToHTML(md: string): string {
           url = url.slice(1, -1);
         }
         const title = m2[2] || m2[3] || m2[4];
-        const key = unescapeMd(m[1]).replace(/\s+/g, ' ').trim().toLowerCase();
+        const key = normalizeLabel(m[1]);
         if (!refs.has(key)) {
           refs.set(key, {
             url: unescapeMd(url),
@@ -1032,9 +1066,11 @@ export function convertToHTML(md: string): string {
       }
     }
     if (!handled) {
-      const open = canStart ? lineForDef.match(/^ {0,3}\[$/) : null;
+      const open = canStart
+        ? lineForDef.match(/^ {0,3}\[((?:\\.|[^\\\[\]])*)$/)
+        : null;
       if (open) {
-        let label = '';
+        let label = open[1];
         let j = i;
         let rest = '';
         while (j + 1 < lines.length) {
@@ -1072,8 +1108,7 @@ export function convertToHTML(md: string): string {
               url = url.slice(1, -1);
             }
             const title = m2[2] || m2[3] || m2[4];
-            const key = unescapeMd(label).replace(/\s+/g, ' ').trim()
-              .toLowerCase();
+            const key = normalizeLabel(label);
             if (!refs.has(key)) {
               refs.set(key, {
                 url: unescapeMd(url),
