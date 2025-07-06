@@ -253,8 +253,23 @@ export function parse(md: string): TsmarkNode[] {
           );
           prevBlank = false;
           i++;
+        } else if (
+          fence === null &&
+          indentWidth(lines[i]) > 3 &&
+          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
+          !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
+          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(current) &&
+          !prevBlank &&
+          indentWidth(stripLazy(bqLines[bqLines.length - 1] ?? '')) <= 3
+        ) {
+          bqLines.push(
+            LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
+          );
+          prevBlank = false;
+          i++;
         } else break;
       }
+      // console.log('bqLines', bqLines);
       const children = parse(bqLines.join('\n'));
       nodes.push({ type: 'blockquote', children });
       continue;
@@ -266,6 +281,7 @@ export function parse(md: string): TsmarkNode[] {
       /^(\s{0,3})(\d{1,9})([.)])([ \t]+.*)$/,
     );
     if (
+      !line.startsWith(LAZY) &&
       (bulletMatch || orderedMatch) &&
       !(/^ {0,3}(\*\s*){3,}$/.test(stripped) ||
         /^ {0,3}(-\s*){3,}$/.test(stripped) ||
@@ -527,33 +543,35 @@ export function parse(md: string): TsmarkNode[] {
           break;
         }
         if (
-          /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
-          /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
-          /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
-          /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
-          /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
-          (() => {
-            const m = stripLazy(lines[i]).match(/^(\s*)(`{3,}|~{3,})(.*)$/);
-            if (m && indentWidth(m[1]) <= 3) {
-              const ch = m[2][0];
-              const rest = m[3];
-              return !((ch === '`' && rest.includes('`')) ||
-                (ch === '~' && rest.includes('~')));
-            }
-            return false;
-          })() ||
-          (() => {
-            const trimmed = stripLazy(lines[i]);
-            const m = trimmed.match(htmlBlockStartRegex);
-            if (m && htmlBlockTags.has(m[1].toLowerCase())) {
-              if (trimmed.startsWith('</')) {
-                const tag = m[1].toLowerCase();
-                return !['pre', 'script', 'style', 'textarea'].includes(tag);
+          !lines[i].startsWith(LAZY) && (
+            /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
+            /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
+            /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
+            /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
+            /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
+            (() => {
+              const m = stripLazy(lines[i]).match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+              if (m && indentWidth(m[1]) <= 3) {
+                const ch = m[2][0];
+                const rest = m[3];
+                return !((ch === '`' && rest.includes('`')) ||
+                  (ch === '~' && rest.includes('~')));
               }
-              return true;
-            }
-            return false;
-          })()
+              return false;
+            })() ||
+            (() => {
+              const trimmed = stripLazy(lines[i]);
+              const m = trimmed.match(htmlBlockStartRegex);
+              if (m && htmlBlockTags.has(m[1].toLowerCase())) {
+                if (trimmed.startsWith('</')) {
+                  const tag = m[1].toLowerCase();
+                  return !['pre', 'script', 'style', 'textarea'].includes(tag);
+                }
+                return true;
+              }
+              return false;
+            })()
+          )
         ) {
           break;
         }
