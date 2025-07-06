@@ -3,7 +3,7 @@ import type { TsmarkNode } from './types.d.ts';
 const LAZY = '\u0001';
 
 const htmlCandidate =
-  /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
+  /<\/?[A-Za-z][^>]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
 
 const htmlBlockStartRegex = /^ {0,3}<\/?([A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)/;
 const htmlBlockTags = new Set([
@@ -597,7 +597,16 @@ function escapeHTML(text: string): string {
 }
 
 function stripMd(text: string): string {
-  return text.replace(/[*_\[\]`]/g, '');
+  text = text.replace(/`+/g, '');
+  text = text.replace(/\\([!"#$%&'()*+,\.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
+  text = text.replace(/!?\[((?:\\.|[^\]])*)\]\([^\)]*\)/g, (_, p1) => {
+    return stripMd(p1);
+  });
+  text = text.replace(/!?\[((?:\\.|[^\]])*)\](?:\[[^\]]*\])?/g, (_, p1) => {
+    return stripMd(p1);
+  });
+  text = text.replace(/[*_]/g, '');
+  return text;
 }
 
 function unescapeMd(text: string): string {
@@ -682,14 +691,20 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   });
 
   // store autolinks as placeholders before handling escapes
-  text = text.replace(/<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*)>/g, (_, p1) => {
+  text = text.replace(
+    /<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/g,
+    (_, p1) => {
+      const token = `\u0000${placeholders.length}\u0000`;
+      const href = encodeURI(p1);
+      placeholders.push(`<a href="${escapeHTML(href)}">${escapeHTML(p1)}</a>`);
+      return token;
+    },
+  );
+  text = text.replace(/<([^\s@<>\\]+@[^\s@<>\\]+)>/g, (_, p1) => {
     const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(`<a href="${encodeURI(p1)}">${escapeHTML(p1)}</a>`);
-    return token;
-  });
-  text = text.replace(/<([^\s@<>]+@[^\s@<>]+)>/g, (_, p1) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(`<a href="mailto:${p1}">${escapeHTML(p1)}</a>`);
+    placeholders.push(
+      `<a href="mailto:${escapeHTML(p1)}">${escapeHTML(p1)}</a>`,
+    );
     return token;
   });
 
@@ -726,7 +741,8 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       const src = encodeURI(
         restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
       );
-      let html = `<img src="${src}" alt="${escapeHTML(stripMd(alt))}"`;
+      const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
+      let html = `<img src="${src}" alt="${escapeHTML(altPlain)}"`;
       if (title) {
         html += ` title="${
           escapeHTML(restoreEntities(restoreEscapes(title)))
@@ -771,8 +787,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         const label = unescapeMd(lab || alt).toLowerCase();
         const def = refs.get(label);
         if (!def) return m;
+        const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
         let html = `<img src="${encodeURI(def.url)}" alt="${
-          escapeHTML(stripMd(alt))
+          escapeHTML(altPlain)
         }"`;
         if (def.title) html += ` title="${escapeHTML(def.title)}"`;
         html += ' />';
@@ -782,19 +799,23 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       },
     );
 
-    text = text.replace(/!\[((?:\\.|[^\]])+)\](?!\()/g, (m, alt) => {
-      const label = unescapeMd(alt).toLowerCase();
-      const def = refs.get(label);
-      if (!def) return m;
-      let html = `<img src="${encodeURI(def.url)}" alt="${
-        escapeHTML(stripMd(alt))
-      }"`;
-      if (def.title) html += ` title="${escapeHTML(def.title)}"`;
-      html += ' />';
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    });
+    text = text.replace(
+      /!\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
+      (m, alt) => {
+        const label = unescapeMd(alt).toLowerCase();
+        const def = refs.get(label);
+        if (!def) return m;
+        const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
+        let html = `<img src="${encodeURI(def.url)}" alt="${
+          escapeHTML(altPlain)
+        }"`;
+        if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+        html += ' />';
+        const token = `\u0000${placeholders.length}\u0000`;
+        placeholders.push(html);
+        return token;
+      },
+    );
 
     // reference-style links
     text = text.replace(
@@ -817,21 +838,24 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
       },
     );
 
-    text = text.replace(/\[((?:\\.|[^\]])+)\](?!\()/g, (m, textContent) => {
-      const def = refs.get(unescapeMd(textContent).toLowerCase());
-      if (!def) return m;
-      const token = `\u0000${placeholders.length}\u0000`;
-      const titleAttr = def.title
-        ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
-        : '';
-      const href = encodeURI(decodeEntities(unescapeMd(def.url)));
-      placeholders.push(
-        `<a href="${href}"${titleAttr}>${
-          escapeHTML(unescapeMd(textContent))
-        }</a>`,
-      );
-      return token;
-    });
+    text = text.replace(
+      /\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
+      (m, textContent) => {
+        const def = refs.get(unescapeMd(textContent).toLowerCase());
+        if (!def) return m;
+        const token = `\u0000${placeholders.length}\u0000`;
+        const titleAttr = def.title
+          ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
+          : '';
+        const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+        placeholders.push(
+          `<a href="${href}"${titleAttr}>${
+            escapeHTML(unescapeMd(textContent))
+          }</a>`,
+        );
+        return token;
+      },
+    );
   }
 
   // store HTML tags as placeholders
