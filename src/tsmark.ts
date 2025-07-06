@@ -274,9 +274,11 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // list (unordered or ordered)
-    const bulletMatch = stripped.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+    const bulletMatch = stripped.match(
+      /^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/,
+    );
     const orderedMatch = stripped.match(
-      /^(\s{0,3})(\d{1,9})([.)])([ \t]+.*)$/,
+      /^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/,
     );
     if (
       !line.startsWith(LAZY) &&
@@ -291,8 +293,8 @@ export function parse(md: string): TsmarkNode[] {
       while (i < lines.length) {
         const cur = stripLazy(lines[i]);
         const m = isOrdered
-          ? cur.match(/^(\s{0,3})(\d{1,9})([.)])([ \t]+.*)$/)
-          : cur.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+          ? cur.match(/^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/)
+          : cur.match(/^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/);
         if (
           !m ||
           /^ {0,3}(\*\s*){3,}$/.test(cur) ||
@@ -301,11 +303,15 @@ export function parse(md: string): TsmarkNode[] {
         ) {
           break;
         }
-        const after = isOrdered ? m[4] : m[3];
+        const after = (isOrdered ? m[4] : m[3]) ?? '';
         const markerBase = indentWidth(m[1]) +
           (isOrdered ? m[2].length + 1 : 1);
         const totalSpaces = indentWidthFrom(after, markerBase);
-        const spacesAfter = totalSpaces >= 5 ? 1 : Math.min(totalSpaces, 4);
+        const spacesAfter = after === ''
+          ? 1
+          : totalSpaces >= 5
+          ? 1
+          : Math.min(totalSpaces, 4);
         const markerIndent = markerBase + spacesAfter;
         const itemLines: string[] = [
           stripColumnsFrom(after, spacesAfter, markerBase),
