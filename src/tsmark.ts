@@ -773,12 +773,16 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
   // inline links (direct)
   text = text.replace(
-    /\[((?:\\.|[^\]])+)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
-    (_, textContent, href, title) => {
+    /\[((?:\\.|[^\]])*)\]\((<[^>]*>|[^\s)]+)(?:\s+"([^"]+)")?\)/g,
+    (m, textContent, href, title) => {
+      if (href.includes('\u0001')) return m;
+      if (href.startsWith('<') && !href.endsWith('>')) return m;
       const token = `\u0000${placeholders.length}\u0000`;
-      const decodedHref = decodeEntities(
-        unescapeMd(restoreEntities(restoreEscapes(href))),
-      );
+      let link = restoreEntities(restoreEscapes(href));
+      if (link.startsWith('<') && link.endsWith('>')) {
+        link = link.slice(1, -1);
+      }
+      const decodedHref = decodeEntities(unescapeMd(link));
       const titleAttr = title
         ? ` title="${
           escapeHTML(
@@ -796,7 +800,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   );
 
   // inline links with empty destination
-  text = text.replace(/\[([^\]]+)\]\(\)/g, (_, textContent) => {
+  text = text.replace(/\[([^\]]*)\]\(\)/g, (_, textContent) => {
     const token = `\u0000${placeholders.length}\u0000`;
     placeholders.push(`<a href="">${escapeHTML(unescapeMd(textContent))}</a>`);
     return token;
