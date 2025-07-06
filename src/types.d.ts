@@ -26,10 +26,12 @@ export type TsmarkNode =
     type: 'list';
     ordered: boolean;
     items: TsmarkNode[];
+    loose?: boolean;
   }
   | {
     type: 'list_item';
     children: TsmarkNode[];
+    loose?: boolean;
   }
   | {
     type: 'blockquote';

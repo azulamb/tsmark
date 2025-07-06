@@ -130,18 +130,24 @@ export function parse(md: string): TsmarkNode[] {
       continue;
     }
 
-    // list
-    const listItemMatch = stripped.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+    // list (unordered or ordered)
+    const bulletMatch = stripped.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+    const orderedMatch = stripped.match(
+      /^(\s{0,3})(\d{1,9})([.)])([ \t]+.*)$/,
+    );
     if (
-      listItemMatch &&
+      (bulletMatch || orderedMatch) &&
       !(/^ {0,3}(\*\s*){3,}$/.test(stripped) ||
         /^ {0,3}(-\s*){3,}$/.test(stripped) ||
         /^ {0,3}(_\s*){3,}$/.test(stripped))
     ) {
+      const isOrdered = Boolean(orderedMatch);
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
         const cur = stripLazy(lines[i]);
-        const m = cur.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+        const m = isOrdered
+          ? cur.match(/^(\s{0,3})(\d{1,9})([.)])([ \t]+.*)$/)
+          : cur.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
         if (
           !m ||
           /^ {0,3}(\*\s*){3,}$/.test(cur) ||
@@ -150,22 +156,27 @@ export function parse(md: string): TsmarkNode[] {
         ) {
           break;
         }
-        const markerIndent = indentWidth(m[1]) + 2;
+        const markerIndent = indentWidth(m[1]) +
+          (isOrdered ? m[2].length + 2 : 2);
         const itemLines: string[] = [
-          stripColumns(m[3], markerIndent),
+          stripColumns(isOrdered ? m[4] : m[3], markerIndent),
         ];
+        let itemLoose = false;
         i++;
         while (i < lines.length) {
           const ind = indentWidth(lines[i]);
           const current = stripLazy(lines[i]);
           if (/^\s*$/.test(current)) {
-            itemLines.push('');
-            i++;
-            if (i < lines.length && indentWidth(lines[i]) >= markerIndent) {
+            const nextInd = i + 1 < lines.length
+              ? indentWidth(lines[i + 1])
+              : -1;
+            if (nextInd >= markerIndent) {
+              itemLoose = true;
+              itemLines.push('');
+              i++;
               continue;
-            } else {
-              break;
             }
+            break;
           } else if (ind >= markerIndent) {
             itemLines.push(stripColumns(lines[i], markerIndent));
             i++;
@@ -174,9 +185,10 @@ export function parse(md: string): TsmarkNode[] {
           }
         }
         const children = parse(itemLines.join('\n'));
-        items.push({ type: 'list_item', children });
+        items.push({ type: 'list_item', children, loose: itemLoose });
       }
-      nodes.push({ type: 'list', ordered: false, items });
+      const listLoose = items.some((it) => (it as any).loose);
+      nodes.push({ type: 'list', ordered: isOrdered, items, loose: listLoose });
       continue;
     }
 
@@ -338,11 +350,16 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
         if (first.type === 'paragraph') {
           const firstHTML = inlineToHTML(first.content, refs);
           const restHTML = rest.map((n) => nodeToHTML(n, refs)).join('\n');
-          if (rest.length === 0) {
-            return `<li>${firstHTML}</li>`;
+          if (!node.loose) {
+            if (rest.length === 0) {
+              return `<li>${firstHTML}</li>`;
+            }
+            if (rest.every((n) => n.type === 'list')) {
+              return `<li>${firstHTML}\n${restHTML}\n</li>`;
+            }
           }
-          if (rest.every((n) => n.type === 'list')) {
-            return `<li>${firstHTML}\n${restHTML}\n</li>`;
+          if (rest.length === 0) {
+            return `<li><p>${firstHTML}</p></li>`;
           }
           return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
         }
@@ -353,7 +370,8 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
       }
       return `<li>${nodeToHTML(it, refs)}</li>`;
     }).join('\n');
-    return `<ul>\n${items}\n</ul>`;
+    const tag = node.ordered ? 'ol' : 'ul';
+    return `<${tag}>\n${items}\n</${tag}>`;
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
