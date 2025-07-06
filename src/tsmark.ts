@@ -545,6 +545,7 @@ export function parse(md: string): TsmarkNode[] {
             /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
             /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
             /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
+            /^ {0,3}>/.test(stripLazy(lines[i])) ||
             /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
             /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
             (() => {
