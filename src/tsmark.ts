@@ -169,6 +169,7 @@ export function parse(md: string): TsmarkNode[] {
     if (bqMatch) {
       const bqLines: string[] = [];
       let prevBlank = false;
+      let fence: { char: string; len: number } | null = null;
       while (i < lines.length) {
         const current = stripLazy(lines[i]);
         const m = current.match(/^ {0,3}>(.*)$/);
@@ -180,6 +181,16 @@ export function parse(md: string): TsmarkNode[] {
             rest = '  ' + rest.slice(1);
           }
           rest = rest.replace(/\t/g, '    ');
+          const fm = rest.match(/^(`{3,}|~{3,})/);
+          if (fm) {
+            const ch = fm[1][0];
+            const len = fm[1].length;
+            if (!fence) {
+              fence = { char: ch, len };
+            } else if (fence.char === ch && len >= fence.len) {
+              fence = null;
+            }
+          }
           bqLines.push(rest);
           prevBlank = false;
           i++;
@@ -188,9 +199,11 @@ export function parse(md: string): TsmarkNode[] {
           prevBlank = true;
           i++;
         } else if (
+          fence === null &&
           indentWidth(lines[i]) <= 3 &&
           !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
-          !/^(?:\s*)(`{3,}|~{3,})/.test(current)
+          !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
+          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(current)
         ) {
           if (prevBlank) break;
           bqLines.push(
@@ -490,7 +503,7 @@ export function parse(md: string): TsmarkNode[] {
         }
         const ln = lines[i];
         if (indentWidth(ln) >= 4) {
-          paraLines.push(stripIndent(ln));
+          paraLines.push(stripColumns(ln, indentWidth(ln)));
         } else {
           const ind = Math.min(indentWidth(ln), 3);
           paraLines.push(stripColumns(ln, ind));
@@ -576,7 +589,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
-    const inner = node.children.map((n) => nodeToHTML(n, refs)).join('');
+    const inner = node.children.map((n) => nodeToHTML(n, refs)).join('\n');
     return inner === ''
       ? '<blockquote>\n</blockquote>'
       : `<blockquote>\n${inner}\n</blockquote>`;
@@ -912,8 +925,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   if (refs) {
     // reference link placeholders are already handled
   }
-  out = out.replace(/ {2}\n/g, '<br />\n');
-  out = out.replace(/ (?=\n)/g, '');
+  out = out.replace(/ {2,}\n(?!$)/g, '<br />\n');
+  out = out.replace(/ +(?=\n)/g, '');
+  out = out.replace(/ +$/g, '');
 
   // restore placeholders
   out = out.replace(/\u0000(\d+)\u0000/g, (_, idx) => placeholders[+idx]);
@@ -931,10 +945,14 @@ export function convertToHTML(md: string): string {
   const refs = new Map<string, RefDef>();
   const filtered: string[] = [];
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  let prevWasDef = false;
   function canStartDef(idx: number): boolean {
     if (idx === 0) return true;
     const prev = lines[idx - 1];
     if (prev.trim() === '') return true;
+    if (prevWasDef) return true;
+    if (startDef.test(prev)) return true;
+    if (/^ {0,3}\[$/.test(prev)) return true;
     if (/^ {0,3}#{1,6}\s/.test(prev)) return true;
     if (/^ {0,3}>/.test(prev)) return true;
     if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(prev)) return true;
@@ -975,11 +993,11 @@ export function convertToHTML(md: string): string {
       while (j + 1 < lines.length) {
         const nxt = lines[j + 1];
         const t = nxt.trimStart();
-        if (
-          rest.trim() !== '' &&
-          titlePattern.test(rest.trim()) &&
-          !/^['"(]/.test(t)
-        ) break;
+        const restTrim = rest.trim();
+        if (titlePattern.test(restTrim)) {
+          const combined = `${restTrim}\n${t}`.trim();
+          if (!titlePattern.test(combined)) break;
+        }
         if (t === '' || startDef.test(nxt)) break;
         rest += '\n' + t;
         j++;
@@ -1006,6 +1024,7 @@ export function convertToHTML(md: string): string {
         }
         i = nextIdx;
         handled = true;
+        prevWasDef = true;
         continue;
       }
     }
@@ -1032,11 +1051,11 @@ export function convertToHTML(md: string): string {
           while (j + 1 < lines.length) {
             const nxt = lines[j + 1];
             const t = nxt.trimStart();
-            if (
-              rest.trim() !== '' &&
-              titlePattern.test(rest.trim()) &&
-              !/^['"(]/.test(t)
-            ) break;
+            const restTrim = rest.trim();
+            if (titlePattern.test(restTrim)) {
+              const combined = `${restTrim}\n${t}`.trim();
+              if (!titlePattern.test(combined)) break;
+            }
             if (t === '' || startDef.test(nxt)) break;
             rest += '\n' + t;
             j++;
@@ -1064,12 +1083,16 @@ export function convertToHTML(md: string): string {
             }
             i = nextIdx;
             handled = true;
+            prevWasDef = true;
             continue;
           }
         }
       }
     }
-    if (!handled) filtered.push(first);
+    if (!handled) {
+      filtered.push(first);
+      prevWasDef = false;
+    }
   }
   const nodes = parse(filtered.join('\n'));
   const html = nodes.map((node) => {
