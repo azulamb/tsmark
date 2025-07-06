@@ -596,6 +596,10 @@ function escapeHTML(text: string): string {
     .replace(/\"/g, '&quot;');
 }
 
+function encodeHref(url: string): string {
+  return encodeURI(url).replace(/%25([0-9a-fA-F]{2})/g, '%$1');
+}
+
 function stripMd(text: string): string {
   text = text.replace(/`+/g, '');
   text = text.replace(/\\([!"#$%&'()*+,\.\/\:;<=>?@\[\]\\^_`{|}~])/g, '$1');
@@ -695,7 +699,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     /<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/g,
     (_, p1) => {
       const token = `\u0000${placeholders.length}\u0000`;
-      const href = encodeURI(p1);
+      const href = encodeHref(p1);
       placeholders.push(`<a href="${escapeHTML(href)}">${escapeHTML(p1)}</a>`);
       return token;
     },
@@ -738,7 +742,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   text = text.replace(
     /!\[((?:\\.|[^\]])*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
     (_, alt, href, title) => {
-      const src = encodeURI(
+      const src = encodeHref(
         restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
       );
       const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
@@ -771,7 +775,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         }"`
         : '';
       placeholders.push(
-        `<a href="${encodeURI(decodedHref)}"${titleAttr}>${
+        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${
           escapeHTML(unescapeMd(textContent))
         }</a>`,
       );
@@ -788,7 +792,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-        let html = `<img src="${encodeURI(def.url)}" alt="${
+        let html = `<img src="${encodeHref(def.url)}" alt="${
           escapeHTML(altPlain)
         }"`;
         if (def.title) html += ` title="${escapeHTML(def.title)}"`;
@@ -806,7 +810,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-        let html = `<img src="${encodeURI(def.url)}" alt="${
+        let html = `<img src="${encodeHref(def.url)}" alt="${
           escapeHTML(altPlain)
         }"`;
         if (def.title) html += ` title="${escapeHTML(def.title)}"`;
@@ -828,7 +832,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         const titleAttr = def.title
           ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
           : '';
-        const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+        const href = encodeHref(decodeEntities(unescapeMd(def.url)));
         placeholders.push(
           `<a href="${href}"${titleAttr}>${
             escapeHTML(unescapeMd(textContent))
@@ -847,7 +851,7 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
         const titleAttr = def.title
           ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
           : '';
-        const href = encodeURI(decodeEntities(unescapeMd(def.url)));
+        const href = encodeHref(decodeEntities(unescapeMd(def.url)));
         placeholders.push(
           `<a href="${href}"${titleAttr}>${
             escapeHTML(unescapeMd(textContent))
