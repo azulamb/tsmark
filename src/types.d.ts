@@ -26,6 +26,7 @@ export type TsmarkNode =
     type: 'list';
     ordered: boolean;
     items: TsmarkNode[];
+    start?: number;
     loose?: boolean;
   }
   | {

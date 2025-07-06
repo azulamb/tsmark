@@ -230,6 +230,7 @@ export function parse(md: string): TsmarkNode[] {
         /^ {0,3}(_\s*){3,}$/.test(stripped))
     ) {
       const isOrdered = Boolean(orderedMatch);
+      const startNum = isOrdered ? parseInt(orderedMatch![2], 10) : undefined;
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
         const cur = stripLazy(lines[i]);
@@ -244,10 +245,12 @@ export function parse(md: string): TsmarkNode[] {
         ) {
           break;
         }
+        const after = isOrdered ? m[4] : m[3];
+        const spacesAfter = indentWidth(after) - indentWidth(after.trimStart());
         const markerIndent = indentWidth(m[1]) +
-          (isOrdered ? m[2].length + 2 : 2);
+          (isOrdered ? m[2].length + 1 : 1) + spacesAfter;
         const itemLines: string[] = [
-          stripColumns(isOrdered ? m[4] : m[3], markerIndent),
+          stripColumns(after, spacesAfter),
         ];
         let itemLoose = false;
         i++;
@@ -255,9 +258,9 @@ export function parse(md: string): TsmarkNode[] {
           const ind = indentWidth(lines[i]);
           const current = stripLazy(lines[i]);
           if (/^\s*$/.test(current)) {
-            const nextInd = i + 1 < lines.length
-              ? indentWidth(lines[i + 1])
-              : -1;
+            let j = i + 1;
+            while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
+            const nextInd = j < lines.length ? indentWidth(lines[j]) : -1;
             if (nextInd >= markerIndent) {
               itemLoose = true;
               itemLines.push('');
@@ -276,7 +279,16 @@ export function parse(md: string): TsmarkNode[] {
         items.push({ type: 'list_item', children, loose: itemLoose });
       }
       const listLoose = items.some((it) => (it as any).loose);
-      nodes.push({ type: 'list', ordered: isOrdered, items, loose: listLoose });
+      const listNode: any = {
+        type: 'list',
+        ordered: isOrdered,
+        items,
+        loose: listLoose,
+      };
+      if (isOrdered && startNum !== 1 && startNum !== undefined) {
+        listNode.start = startNum;
+      }
+      nodes.push(listNode as TsmarkNode);
       continue;
     }
 
@@ -585,7 +597,11 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
       return `<li>${nodeToHTML(it, refs)}</li>`;
     }).join('\n');
     const tag = node.ordered ? 'ol' : 'ul';
-    return `<${tag}>\n${items}\n</${tag}>`;
+    const attr = node.ordered && (node as any).start !== undefined &&
+        (node as any).start !== 1
+      ? ` start="${(node as any).start}"`
+      : '';
+    return `<${tag}${attr}>\n${items}\n</${tag}>`;
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
