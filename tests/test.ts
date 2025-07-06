@@ -11,7 +11,7 @@ const testIds = Deno.args.map((arg) => {
 
 const testCases = 0 < testIds.length
   ? tests.filter((_test, index) => {
-    return testIds.includes(index + 1);
+    return testIds.includes(index);
   })
   : tests;
 
