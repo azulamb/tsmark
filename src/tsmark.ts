@@ -3,7 +3,7 @@ import type { TsmarkNode } from './types.d.ts';
 const LAZY = '\u0001';
 
 const htmlCandidate =
-  /<\/?[A-Za-z][^>]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
+  /<\/?[A-Za-z][^>]*>|<!--(?:[\s\S]*?-->|>|->)|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
 
 const htmlBlockStartRegex = /^ {0,3}<\/?([A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)/;
 const htmlBlockTags = new Set([
@@ -857,7 +857,7 @@ function inlineToHTML(
   // store HTML tags as placeholders before processing escapes
   text = text.replace(htmlCandidate, (m, offset: number, str: string) => {
     if (
-      isHtmlTag(m) &&
+      (isHtmlTag(m) || m.startsWith('<!-->') || m.startsWith('<!--->')) &&
       (offset === 0 || (str[offset - 1] !== '(' && str[offset - 1] !== '\\'))
     ) {
       let html = m;
