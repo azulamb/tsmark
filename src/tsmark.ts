@@ -1,5 +1,7 @@
 import type { TsmarkNode } from './types.d.ts';
 
+const LAZY = '\u0001';
+
 const htmlCandidate =
   /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
 
@@ -21,7 +23,12 @@ function isHtmlTag(tag: string): boolean {
   );
 }
 
+function stripLazy(line: string): string {
+  return line.startsWith(LAZY) ? line.slice(1) : line;
+}
+
 function indentWidth(line: string): number {
+  line = stripLazy(line);
   let col = 0;
   for (const ch of line) {
     if (ch === ' ') {
@@ -36,6 +43,7 @@ function indentWidth(line: string): number {
 }
 
 function stripColumns(line: string, count: number): string {
+  line = stripLazy(line);
   let col = 0;
   let idx = 0;
   let indent = '';
@@ -73,11 +81,13 @@ export function parse(md: string): TsmarkNode[] {
   let i = 0;
   main: while (i < lines.length) {
     const line = lines[i];
+    const stripped = stripLazy(line);
 
     // thematic break
     if (
-      /^ {0,3}(\*\s*){3,}$/.test(line) || /^ {0,3}(-\s*){3,}$/.test(line) ||
-      /^ {0,3}(_\s*){3,}$/.test(line)
+      /^ {0,3}(\*\s*){3,}$/.test(stripped) ||
+      /^ {0,3}(-\s*){3,}$/.test(stripped) ||
+      /^ {0,3}(_\s*){3,}$/.test(stripped)
     ) {
       nodes.push({ type: 'thematic_break' });
       i++;
@@ -85,11 +95,12 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // blockquote
-    const bqMatch = line.match(/^ {0,3}>(.*)$/);
+    const bqMatch = stripped.match(/^ {0,3}>(.*)$/);
     if (bqMatch) {
       const bqLines: string[] = [];
       while (i < lines.length) {
-        const m = lines[i].match(/^ {0,3}>(.*)$/);
+        const current = stripLazy(lines[i]);
+        const m = current.match(/^ {0,3}>(.*)$/);
         if (m) {
           let rest = m[1];
           if (rest.startsWith(' ')) {
@@ -100,16 +111,16 @@ export function parse(md: string): TsmarkNode[] {
           rest = rest.replace(/\t/g, '    ');
           bqLines.push(rest);
           i++;
-        } else if (lines[i].trim() === '') {
+        } else if (current.trim() === '') {
           bqLines.push('');
           i++;
         } else if (
           indentWidth(lines[i]) <= 3 &&
-          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(lines[i]) &&
-          !/^(?:\s*)(`{3,}|~{3,})/.test(lines[i])
+          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
+          !/^(?:\s*)(`{3,}|~{3,})/.test(current)
         ) {
           bqLines.push(
-            stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
+            LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
           );
           i++;
         } else break;
@@ -120,29 +131,34 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // list
-    const listItemMatch = line.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+    const listItemMatch = stripped.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
     if (
       listItemMatch &&
-      !(/^ {0,3}(\*\s*){3,}$/.test(line) || /^ {0,3}(-\s*){3,}$/.test(line) ||
-        /^ {0,3}(_\s*){3,}$/.test(line))
+      !(/^ {0,3}(\*\s*){3,}$/.test(stripped) ||
+        /^ {0,3}(-\s*){3,}$/.test(stripped) ||
+        /^ {0,3}(_\s*){3,}$/.test(stripped))
     ) {
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
-        const m = lines[i].match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
+        const cur = stripLazy(lines[i]);
+        const m = cur.match(/^(\s{0,3})([-+*])([ \t]+.*)$/);
         if (
           !m ||
-          /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
-          /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
-          /^ {0,3}(_\s*){3,}$/.test(lines[i])
+          /^ {0,3}(\*\s*){3,}$/.test(cur) ||
+          /^ {0,3}(-\s*){3,}$/.test(cur) ||
+          /^ {0,3}(_\s*){3,}$/.test(cur)
         ) {
           break;
         }
         const markerIndent = indentWidth(m[1]) + 2;
-        const itemLines: string[] = [stripColumns(m[3], markerIndent)];
+        const itemLines: string[] = [
+          stripColumns(m[3], markerIndent),
+        ];
         i++;
         while (i < lines.length) {
           const ind = indentWidth(lines[i]);
-          if (/^\s*$/.test(lines[i])) {
+          const current = stripLazy(lines[i]);
+          if (/^\s*$/.test(current)) {
             itemLines.push('');
             i++;
             if (i < lines.length && indentWidth(lines[i]) >= markerIndent) {
@@ -165,7 +181,7 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // fenced code block
-    const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+    const fenceMatch = stripped.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
     if (fenceMatch) {
       const fence = fenceMatch[2];
       const info = fenceMatch[3].trim();
@@ -174,8 +190,8 @@ export function parse(md: string): TsmarkNode[] {
         : undefined;
       i++;
       const codeLines: string[] = [];
-      while (i < lines.length && !lines[i].startsWith(fence)) {
-        codeLines.push(lines[i]);
+      while (i < lines.length && !stripLazy(lines[i]).startsWith(fence)) {
+        codeLines.push(stripLazy(lines[i]));
         i++;
       }
       // skip closing fence
@@ -192,9 +208,10 @@ export function parse(md: string): TsmarkNode[] {
     if (indentWidth(line) >= 4) {
       const codeLines: string[] = [];
       while (
-        i < lines.length && (indentWidth(lines[i]) >= 4 || lines[i] === '')
+        i < lines.length &&
+        (indentWidth(lines[i]) >= 4 || stripLazy(lines[i]) === '')
       ) {
-        codeLines.push(lines[i]);
+        codeLines.push(stripLazy(lines[i]));
         i++;
       }
 
@@ -209,7 +226,7 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // ATX heading
-    const atx = line.match(/^ {0,3}(#{1,6})(.*)$/);
+    const atx = stripped.match(/^ {0,3}(#{1,6})(.*)$/);
     if (atx) {
       const level = atx[1].length;
       let rest = atx[2];
@@ -230,7 +247,7 @@ export function parse(md: string): TsmarkNode[] {
 
     // HTML block (single line)
     {
-      const m = line.match(/^ {0,3}(<.*>)$/);
+      const m = stripped.match(/^ {0,3}(<.*>)$/);
       if (m && isHtmlTag(m[1])) {
         nodes.push({ type: 'html', content: m[1] });
         i++;
@@ -239,21 +256,22 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // paragraph and setext heading
-    if (line.trim() !== '') {
+    if (stripped.trim() !== '') {
       const paraLines: string[] = [];
-      while (i < lines.length && lines[i].trim() !== '') {
+      while (i < lines.length && stripLazy(lines[i]).trim() !== '') {
         if (
-          /^ {0,3}([-=])+\s*$/.test(lines[i]) &&
+          !lines[i].startsWith(LAZY) &&
+          /^ {0,3}([-=])+\s*$/.test(stripLazy(lines[i])) &&
           paraLines.length > 0
         ) {
           break;
         }
         if (
-          /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
-          /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
-          /^ {0,3}(_\s*){3,}$/.test(lines[i]) ||
-          /^\s{0,3}[-+*][ \t]+/.test(lines[i]) ||
-          /^ {0,3}#{1,6}(?:\s|$)/.test(lines[i])
+          /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
+          /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
+          /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
+          /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
+          /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i]))
         ) {
           break;
         }
@@ -267,10 +285,11 @@ export function parse(md: string): TsmarkNode[] {
         i++;
         if (
           i < lines.length &&
-          /^ {0,3}([-=])+\s*$/.test(lines[i]) &&
+          !lines[i].startsWith(LAZY) &&
+          /^ {0,3}([-=])+\s*$/.test(stripLazy(lines[i])) &&
           paraLines.length > 0
         ) {
-          const level = lines[i].trim().startsWith('=') ? 1 : 2;
+          const level = stripLazy(lines[i]).trim().startsWith('=') ? 1 : 2;
           nodes.push({
             type: 'heading',
             level,
