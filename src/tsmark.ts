@@ -788,7 +788,8 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     text = text.replace(
       /!\[((?:\\.|[^\]])*)\]\[((?:\\.|[^\]])*)\]/g,
       (m, alt, lab) => {
-        const label = unescapeMd(lab || alt).toLowerCase();
+        const label = unescapeMd(restoreEntities(restoreEscapes(lab || alt)))
+          .toLowerCase();
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
@@ -806,7 +807,8 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     text = text.replace(
       /!\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
       (m, alt) => {
-        const label = unescapeMd(alt).toLowerCase();
+        const label = unescapeMd(restoreEntities(restoreEscapes(alt)))
+          .toLowerCase();
         const def = refs.get(label);
         if (!def) return m;
         const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
@@ -825,7 +827,9 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     text = text.replace(
       /\[((?:\\.|[^\]])+)\]\[((?:\\.|[^\]])*)\]/g,
       (m, textContent, lab) => {
-        const key = unescapeMd(lab || textContent).toLowerCase();
+        const key = unescapeMd(
+          restoreEntities(restoreEscapes(lab || textContent)),
+        ).toLowerCase();
         const def = refs.get(key);
         if (!def) return m;
         const token = `\u0000${placeholders.length}\u0000`;
@@ -845,7 +849,10 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
     text = text.replace(
       /\[((?:\\.|[^\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
       (m, textContent) => {
-        const def = refs.get(unescapeMd(textContent).toLowerCase());
+        const def = refs.get(
+          unescapeMd(restoreEntities(restoreEscapes(textContent)))
+            .toLowerCase(),
+        );
         if (!def) return m;
         const token = `\u0000${placeholders.length}\u0000`;
         const titleAttr = def.title
@@ -924,9 +931,25 @@ export function convertToHTML(md: string): string {
     const m = first.match(startDef);
     if (m) {
       let rest = m[2];
-      while (i + 1 < lines.length && contDef.test(lines[i + 1])) {
-        rest += '\n' + lines[i + 1].replace(/^\s+/, '');
+      if (
+        rest === '' &&
+        i + 1 < lines.length &&
+        lines[i + 1].trim() !== '' &&
+        !startDef.test(lines[i + 1])
+      ) {
+        rest = lines[i + 1].trimStart();
         i++;
+        while (i + 1 < lines.length) {
+          const nxt = lines[i + 1];
+          if (nxt.trim() === '' || startDef.test(nxt)) break;
+          rest += '\n' + nxt.trimStart();
+          i++;
+        }
+      } else {
+        while (i + 1 < lines.length && contDef.test(lines[i + 1])) {
+          rest += '\n' + lines[i + 1].replace(/^\s+/, '');
+          i++;
+        }
       }
       rest = rest.trim();
       const m2 = rest.match(titlePattern);
