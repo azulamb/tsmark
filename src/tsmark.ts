@@ -289,6 +289,8 @@ export function parse(md: string): TsmarkNode[] {
     ) {
       const isOrdered = Boolean(orderedMatch);
       const startNum = isOrdered ? parseInt(orderedMatch![2], 10) : undefined;
+      const bulletChar = bulletMatch ? bulletMatch[2] : null;
+      const delimChar = orderedMatch ? orderedMatch[3] : null;
       const items: TsmarkNode[] = [];
       while (i < lines.length) {
         const cur = stripLazy(lines[i]);
@@ -297,6 +299,8 @@ export function parse(md: string): TsmarkNode[] {
           : cur.match(/^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/);
         if (
           !m ||
+          (!isOrdered && m[2] !== bulletChar) ||
+          (isOrdered && m[3] !== delimChar) ||
           /^ {0,3}(\*\s*){3,}$/.test(cur) ||
           /^ {0,3}(-\s*){3,}$/.test(cur) ||
           /^ {0,3}(_\s*){3,}$/.test(cur)
@@ -662,7 +666,12 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
         }
         if (first.type === 'paragraph') {
           const firstHTML = inlineToHTML(first.content, refs);
-          const restHTML = rest.map((n) => nodeToHTML(n, refs)).join('\n');
+          const restHTML = rest.map((n) => {
+            if (n.type === 'paragraph' && !node.loose) {
+              return inlineToHTML(n.content, refs);
+            }
+            return nodeToHTML(n, refs);
+          }).join('\n');
           if (!node.loose) {
             if (rest.length === 0) {
               return `<li>${firstHTML}</li>`;
@@ -676,10 +685,18 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
           }
           return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
         }
-        const inner = [first, ...rest].map((n) => nodeToHTML(n, refs)).join(
-          '\n',
-        );
-        return `<li>\n${inner}\n</li>`;
+        const inner = [first, ...rest].map((n) => {
+          if (n.type === 'paragraph' && !node.loose) {
+            return inlineToHTML(n.content, refs);
+          }
+          return nodeToHTML(n, refs);
+        }).join('\n');
+        const trailing =
+          it.children[it.children.length - 1]?.type === 'paragraph' &&
+            !node.loose
+            ? ''
+            : '\n';
+        return `<li>\n${inner}${trailing}</li>`;
       }
       return `<li>${nodeToHTML(it, refs)}</li>`;
     }).join('\n');
