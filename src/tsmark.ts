@@ -200,13 +200,21 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // ATX heading
-    const atx = line.match(/^ {0,3}(#{1,6})\s+(.*)$/);
+    const atx = line.match(/^ {0,3}(#{1,6})(.*)$/);
     if (atx) {
       const level = atx[1].length;
-      const content = atx[2].replace(/\s+#+\s*$/, '').trim();
-      nodes.push({ type: 'heading', level, content });
-      i++;
-      continue;
+      let rest = atx[2];
+      if (rest !== '' && !/^\s/.test(rest)) {
+        // not a heading if no space after markers
+      } else {
+        rest = rest.replace(/\s+$/, '');
+        rest = rest.replace(/\s+#+\s*$/, '');
+        rest = rest.replace(/^\s+/, '');
+        const content = rest;
+        nodes.push({ type: 'heading', level, content });
+        i++;
+        continue;
+      }
     }
 
     // Setext heading
@@ -239,7 +247,8 @@ export function parse(md: string): TsmarkNode[] {
           /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
           /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
           /^ {0,3}(_\s*){3,}$/.test(lines[i]) ||
-          /^\s{0,3}[-+*][ \t]+/.test(lines[i])
+          /^\s{0,3}[-+*][ \t]+/.test(lines[i]) ||
+          /^ {0,3}#{1,6}(?:\s|$)/.test(lines[i])
         ) {
           break;
         }
@@ -251,8 +260,10 @@ export function parse(md: string): TsmarkNode[] {
         }
         i++;
       }
-      nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
-      continue;
+      if (paraLines.length > 0) {
+        nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
+        continue;
+      }
     }
 
     // blank line
