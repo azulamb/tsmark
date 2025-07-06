@@ -368,6 +368,13 @@ export function parse(md: string): TsmarkNode[] {
               break;
             }
             if (nextInd >= markerIndent + 4) {
+              const prevLine = itemLines[itemLines.length - 1] ?? '';
+              const prevBullet = isOrdered
+                ? /^\s*\d+[.)]/.test(prevLine)
+                : /^\s*[-+*]/.test(prevLine);
+              if (!prevBullet && prevLine.trim() !== '') {
+                itemLoose = true;
+              }
               itemLines.push('');
               i++;
               prevBlank = true;
