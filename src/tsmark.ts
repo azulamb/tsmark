@@ -536,9 +536,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'paragraph') {
     return `<p>${inlineToHTML(node.content, refs)}</p>`;
   } else if (node.type === 'code_block') {
-    const escaped = node.content.replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escaped = escapeHTML(node.content);
     const langClass = node.language
       ? ` class="language-${escapeHTML(node.language)}"`
       : '';
@@ -578,9 +576,10 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
-    return `<blockquote>\n${
-      node.children.map((n) => nodeToHTML(n, refs)).join('')
-    }\n</blockquote>`;
+    const inner = node.children.map((n) => nodeToHTML(n, refs)).join('');
+    return inner === ''
+      ? '<blockquote>\n</blockquote>'
+      : `<blockquote>\n${inner}\n</blockquote>`;
   } else if (node.type === 'thematic_break') {
     return '<hr />';
   } else if (node.type === 'html') {
@@ -927,37 +926,65 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
 
 export function convertToHTML(md: string): string {
   const startDef = /^ {0,3}\[((?:\\.|[^\\\]])+)\]:\s*(.*)$/;
-  const contDef = /^\s+(.*)$/;
   const titlePattern =
-    /^(<[^>]*>|\S+)(?:\s+(?:"([^"]+)"|'([^']+)'|\(([^)]+)\)))?\s*$/s;
+    /^(<[^>]*>|[^\s<>]+)(?:\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?\s*$/s;
   const refs = new Map<string, RefDef>();
   const filtered: string[] = [];
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  function canStartDef(idx: number): boolean {
+    if (idx === 0) return true;
+    const prev = lines[idx - 1];
+    if (prev.trim() === '') return true;
+    if (/^ {0,3}#{1,6}\s/.test(prev)) return true;
+    if (/^ {0,3}>/.test(prev)) return true;
+    if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(prev)) return true;
+    if (/^ {0,3}(`{3,}|~{3,})/.test(prev)) return true;
+    if (
+      /^ {0,3}(?:\*\s*){3,}$/.test(prev) ||
+      /^ {0,3}(?:-\s*){3,}$/.test(prev) ||
+      /^ {0,3}(?:_\s*){3,}$/.test(prev)
+    ) return true;
+    if (indentWidth(prev) >= 4) return true;
+    return false;
+  }
+  let fence: { char: string; len: number } | null = null;
   for (let i = 0; i < lines.length; i++) {
     const first = lines[i];
-    const m = first.match(startDef);
+    const bq = first.match(/^ {0,3}>[ \t]?(.*)$/);
+    const lineForDef = bq ? bq[1] : first;
+    const fm = first.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fm) {
+      const ch = fm[1][0];
+      const len = fm[1].length;
+      if (!fence) {
+        fence = { char: ch, len };
+      } else if (fence.char === ch && fm[1].length >= fence.len) {
+        fence = null;
+      }
+    }
+    if (fence) {
+      filtered.push(first);
+      continue;
+    }
+    const canStart = canStartDef(i);
+    let handled = false;
+    const m = canStart ? lineForDef.match(startDef) : null;
     if (m) {
       let rest = m[2];
-      if (
-        rest === '' &&
-        i + 1 < lines.length &&
-        lines[i + 1].trim() !== '' &&
-        !startDef.test(lines[i + 1])
-      ) {
-        rest = lines[i + 1].trimStart();
-        i++;
-        while (i + 1 < lines.length) {
-          const nxt = lines[i + 1];
-          if (nxt.trim() === '' || startDef.test(nxt)) break;
-          rest += '\n' + nxt.trimStart();
-          i++;
-        }
-      } else {
-        while (i + 1 < lines.length && contDef.test(lines[i + 1])) {
-          rest += '\n' + lines[i + 1].replace(/^\s+/, '');
-          i++;
-        }
+      let j = i;
+      while (j + 1 < lines.length) {
+        const nxt = lines[j + 1];
+        const t = nxt.trimStart();
+        if (
+          rest.trim() !== '' &&
+          titlePattern.test(rest.trim()) &&
+          !/^['"(]/.test(t)
+        ) break;
+        if (t === '' || startDef.test(nxt)) break;
+        rest += '\n' + t;
+        j++;
       }
+      const nextIdx = j;
       rest = rest.trim();
       const m2 = rest.match(titlePattern);
       if (m2) {
@@ -966,17 +993,87 @@ export function convertToHTML(md: string): string {
           url = url.slice(1, -1);
         }
         const title = m2[2] || m2[3] || m2[4];
-        refs.set(unescapeMd(m[1]).toLowerCase(), {
-          url: unescapeMd(url),
-          title: title ? unescapeMd(title) : undefined,
-        });
+        const key = unescapeMd(m[1]).replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!refs.has(key)) {
+          refs.set(key, {
+            url: unescapeMd(url),
+            title: title ? unescapeMd(title) : undefined,
+          });
+        }
+        if (bq) {
+          const prefix = first.slice(0, first.length - lineForDef.length);
+          filtered.push(prefix.trimEnd());
+        }
+        i = nextIdx;
+        handled = true;
         continue;
       }
     }
-    filtered.push(first);
+    if (!handled) {
+      const open = canStart ? lineForDef.match(/^ {0,3}\[$/) : null;
+      if (open) {
+        let label = '';
+        let j = i;
+        let rest = '';
+        while (j + 1 < lines.length) {
+          j++;
+          const ln = lines[j];
+          const close = ln.match(/^(.*)\]:\s*(.*)$/);
+          if (close) {
+            if (label) label += '\n';
+            label += close[1];
+            rest = close[2];
+            break;
+          }
+          if (label) label += '\n';
+          label += ln;
+        }
+        if (rest !== '') {
+          while (j + 1 < lines.length) {
+            const nxt = lines[j + 1];
+            const t = nxt.trimStart();
+            if (
+              rest.trim() !== '' &&
+              titlePattern.test(rest.trim()) &&
+              !/^['"(]/.test(t)
+            ) break;
+            if (t === '' || startDef.test(nxt)) break;
+            rest += '\n' + t;
+            j++;
+          }
+          const nextIdx = j;
+          rest = rest.trim();
+          const m2 = rest.match(titlePattern);
+          if (m2) {
+            let url = m2[1];
+            if (url.startsWith('<') && url.endsWith('>')) {
+              url = url.slice(1, -1);
+            }
+            const title = m2[2] || m2[3] || m2[4];
+            const key = unescapeMd(label).replace(/\s+/g, ' ').trim()
+              .toLowerCase();
+            if (!refs.has(key)) {
+              refs.set(key, {
+                url: unescapeMd(url),
+                title: title ? unescapeMd(title) : undefined,
+              });
+            }
+            if (bq) {
+              const prefix = first.slice(0, first.length - lineForDef.length);
+              filtered.push(prefix.trimEnd());
+            }
+            i = nextIdx;
+            handled = true;
+            continue;
+          }
+        }
+      }
+    }
+    if (!handled) filtered.push(first);
   }
   const nodes = parse(filtered.join('\n'));
-  return nodes.map((node) => {
+  const html = nodes.map((node) => {
     return nodeToHTML(node, refs);
-  }).join('\n') + '\n';
+  }).join('\n');
+  return html ? html + '\n' : '';
 }
