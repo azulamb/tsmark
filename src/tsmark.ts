@@ -884,19 +884,40 @@ function inlineToHTML(
     },
   );
 
+  // inline links (direct) with angle brackets around destination
+  text = text.replace(
+    /\[([^\[\]]*)\]\(<([^>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
+    (m, textContent, href, t1, t2, t3) => {
+      const title = t1 || t2 || t3;
+      const decodedHref = decodeEntities(
+        unescapeMd(restoreEntities(restoreEscapes(href))),
+      );
+      const titleAttr = title
+        ? ` title="${
+          escapeHTML(
+            decodeEntities(unescapeMd(restoreEntities(restoreEscapes(title)))),
+          )
+        }"`
+        : '';
+      const inner = inlineToHTML(textContent, refs, placeholders);
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(
+        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${inner}</a>`,
+      );
+      return token;
+    },
+  );
+
   // inline links (direct)
   text = text.replace(
     /\[([^\[\]]*)\]\(((?:\\.|[^()\\]|\([^()\\]*\))*?)\)/g,
     (m, textContent, inside) => {
       const m2 = inside.match(
-        /^\s*(<[^>]*>|[^\s<>]+)(?:\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?\s*$/s,
+        /^[ \t\n]*([^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
       );
       if (!m2) return m;
       let href = restoreEntities(restoreEscapes(m2[1]));
       const title = m2[2] || m2[3] || m2[4];
-      if (href.startsWith('<') && href.endsWith('>')) {
-        href = href.slice(1, -1);
-      }
       const decodedHref = decodeEntities(unescapeMd(href));
       const titleAttr = title
         ? ` title="${
