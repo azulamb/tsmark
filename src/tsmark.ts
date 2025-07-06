@@ -71,7 +71,7 @@ export function parse(md: string): TsmarkNode[] {
   const nodes: TsmarkNode[] = [];
 
   let i = 0;
-  while (i < lines.length) {
+  main: while (i < lines.length) {
     const line = lines[i];
 
     // thematic break
@@ -102,6 +102,15 @@ export function parse(md: string): TsmarkNode[] {
           i++;
         } else if (lines[i].trim() === '') {
           bqLines.push('');
+          i++;
+        } else if (
+          indentWidth(lines[i]) <= 3 &&
+          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(lines[i]) &&
+          !/^(?:\s*)(`{3,}|~{3,})/.test(lines[i])
+        ) {
+          bqLines.push(
+            stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
+          );
           i++;
         } else break;
       }
@@ -217,17 +226,7 @@ export function parse(md: string): TsmarkNode[] {
       }
     }
 
-    // Setext heading
-    if (i + 1 < lines.length) {
-      const next = lines[i + 1];
-      const setext = next.match(/^([-=])+\s*$/);
-      if (setext && line.trim() !== '') {
-        const level = next.trim().startsWith('=') ? 1 : 2;
-        nodes.push({ type: 'heading', level, content: line.trim() });
-        i += 2;
-        continue;
-      }
-    }
+    // Setext heading will be handled together with paragraph parsing
 
     // HTML block (single line)
     {
@@ -239,10 +238,16 @@ export function parse(md: string): TsmarkNode[] {
       }
     }
 
-    // paragraph
+    // paragraph and setext heading
     if (line.trim() !== '') {
       const paraLines: string[] = [];
       while (i < lines.length && lines[i].trim() !== '') {
+        if (
+          /^ {0,3}([-=])+\s*$/.test(lines[i]) &&
+          paraLines.length > 0
+        ) {
+          break;
+        }
         if (
           /^ {0,3}(\*\s*){3,}$/.test(lines[i]) ||
           /^ {0,3}(-\s*){3,}$/.test(lines[i]) ||
@@ -256,9 +261,25 @@ export function parse(md: string): TsmarkNode[] {
         if (indentWidth(ln) >= 4) {
           paraLines.push(stripIndent(ln));
         } else {
-          paraLines.push(ln);
+          const ind = Math.min(indentWidth(ln), 3);
+          paraLines.push(stripColumns(ln, ind));
         }
         i++;
+        if (
+          i < lines.length &&
+          /^ {0,3}([-=])+\s*$/.test(lines[i]) &&
+          paraLines.length > 0
+        ) {
+          const level = lines[i].trim().startsWith('=') ? 1 : 2;
+          nodes.push({
+            type: 'heading',
+            level,
+            content: paraLines.join('\n').trimEnd(),
+          });
+          i++;
+          paraLines.length = 0;
+          continue main;
+        }
       }
       if (paraLines.length > 0) {
         nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
