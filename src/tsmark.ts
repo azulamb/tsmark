@@ -144,6 +144,48 @@ function stripIndent(line: string): string {
   return stripColumns(line, 4);
 }
 
+function indentWidthFrom(line: string, start: number): number {
+  line = stripLazy(line);
+  let col = start;
+  for (const ch of line) {
+    if (ch === ' ') {
+      col++;
+    } else if (ch === '\t') {
+      col += 4 - (col % 4);
+    } else {
+      break;
+    }
+  }
+  return col - start;
+}
+
+function stripColumnsFrom(line: string, count: number, start: number): string {
+  line = stripLazy(line);
+  let col = start;
+  let idx = 0;
+  let indent = '';
+  while (idx < line.length) {
+    const ch = line[idx];
+    if (ch === ' ') {
+      indent += ' ';
+      col++;
+      idx++;
+    } else if (ch === '\t') {
+      const width = 4 - (col % 4);
+      indent += ' '.repeat(width);
+      col += width;
+      idx++;
+    } else {
+      break;
+    }
+  }
+  const rest = line.slice(idx);
+  if (count >= indent.length) {
+    return rest;
+  }
+  return indent.slice(count) + rest;
+}
+
 export function parse(md: string): TsmarkNode[] {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
   const nodes: TsmarkNode[] = [];
@@ -246,11 +288,13 @@ export function parse(md: string): TsmarkNode[] {
           break;
         }
         const after = isOrdered ? m[4] : m[3];
-        const spacesAfter = indentWidth(after) - indentWidth(after.trimStart());
-        const markerIndent = indentWidth(m[1]) +
-          (isOrdered ? m[2].length + 1 : 1) + spacesAfter;
+        const markerBase = indentWidth(m[1]) +
+          (isOrdered ? m[2].length + 1 : 1);
+        const totalSpaces = indentWidthFrom(after, markerBase);
+        const spacesAfter = totalSpaces >= 5 ? 1 : Math.min(totalSpaces, 4);
+        const markerIndent = markerBase + spacesAfter;
         const itemLines: string[] = [
-          stripColumns(after, spacesAfter),
+          stripColumnsFrom(after, spacesAfter, markerBase),
         ];
         let itemLoose = false;
         i++;
