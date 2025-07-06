@@ -374,7 +374,9 @@ export function parse(md: string): TsmarkNode[] {
               break;
             }
             if (nextInd >= markerIndent + 4) {
-              const prevLine = itemLines[itemLines.length - 1] ?? '';
+              let k = itemLines.length - 1;
+              while (k >= 0 && itemLines[k].trim() === '') k--;
+              const prevLine = k >= 0 ? itemLines[k] : '';
               const prevBullet = isOrdered
                 ? /^\s*\d+[.)]/.test(prevLine)
                 : /^\s*[-+*]/.test(prevLine);
@@ -387,7 +389,9 @@ export function parse(md: string): TsmarkNode[] {
               continue;
             }
             if (nextInd >= markerIndent && !atStart) {
-              const prevLine = itemLines[itemLines.length - 1] ?? '';
+              let k2 = itemLines.length - 1;
+              while (k2 >= 0 && itemLines[k2].trim() === '') k2--;
+              const prevLine = k2 >= 0 ? itemLines[k2] : '';
               const prevBullet = isOrdered
                 ? /^\s*\d+[.)]/.test(prevLine)
                 : /^\s*[-+*]/.test(prevLine);
