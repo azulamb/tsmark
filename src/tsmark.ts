@@ -344,7 +344,7 @@ export function parse(md: string): TsmarkNode[] {
             prevBlank = false;
           } else if (
             !prevBlank &&
-            ind <= 3 &&
+            ind < markerIndent &&
             !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
             !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
             !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current) &&
@@ -837,6 +837,23 @@ function inlineToHTML(
     return token;
   });
 
+  // store HTML tags as placeholders before processing escapes
+  text = text.replace(htmlCandidate, (m, offset: number, str: string) => {
+    if (
+      isHtmlTag(m) &&
+      (offset === 0 || (str[offset - 1] !== '(' && str[offset - 1] !== '\\'))
+    ) {
+      let html = m;
+      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
+        html = html.replace(/>$/, '&gt;');
+      }
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    }
+    return m;
+  });
+
   // handle backslash escapes by storing them as placeholders
   text = text.replace(
     /\\([!"#$%&'()*+,\-.\/\:;<=>?@\[\]\\^_`{|}~])/g,
@@ -867,20 +884,6 @@ function inlineToHTML(
     const token = `\u0003${placeholders.length}\u0003`;
     placeholders.push(escapeHTML(decodeEntities(m)));
     return token;
-  });
-
-  // store HTML tags as placeholders before processing links
-  text = text.replace(htmlCandidate, (m, offset: number, str: string) => {
-    if (isHtmlTag(m) && (offset === 0 || str[offset - 1] !== '(')) {
-      let html = m;
-      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
-        html = html.replace(/>$/, '&gt;');
-      }
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    }
-    return m;
   });
 
   // inline images (direct)
