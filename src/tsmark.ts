@@ -307,7 +307,7 @@ export function parse(md: string): TsmarkNode[] {
         const markerBase = indentWidth(m[1]) +
           (isOrdered ? m[2].length + 1 : 1);
         const totalSpaces = indentWidthFrom(after, markerBase);
-        const spacesAfter = after === ''
+        const spacesAfter = after.trim() === ''
           ? 1
           : totalSpaces >= 5
           ? 1
