@@ -79,7 +79,13 @@ function isHtmlTag(tag: string): boolean {
   const openTag =
     /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
   const closeTag = /^<\/[A-Za-z][A-Za-z0-9-]*\s*>$/;
-  const comment = /^(?:<!---->|<!--(?:-?[^>-])(?:[^-]*-+)*?-->)$/s;
+  // CommonMark allows HTML comments even if they don't strictly conform to the
+  // HTML specification.  The previous implementation tried to validate the
+  // comment contents strictly and failed to recognize comments containing
+  // sequences like `--` across newlines.  This resulted in raw comments being
+  // escaped in the output.  To comply with the CommonMark spec examples, accept
+  // any sequence between `<!--` and `-->`.
+  const comment = /^<!--[\s\S]*?-->$/;
   const proc = /^<\?[\s\S]*?\?>$/;
   const decl = /^<![A-Z]+\s+[^>]*>$/;
   const cdata = /^<!\[CDATA\[[\s\S]*?\]\]>$/;
