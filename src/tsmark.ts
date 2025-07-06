@@ -243,7 +243,7 @@ export function parse(md: string): TsmarkNode[] {
           indentWidth(lines[i]) <= 3 &&
           !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
           !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
-          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(current)
+          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current)
         ) {
           if (prevBlank) break;
           bqLines.push(
@@ -256,7 +256,7 @@ export function parse(md: string): TsmarkNode[] {
           indentWidth(lines[i]) > 3 &&
           !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
           !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
-          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(current) &&
+          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current) &&
           !prevBlank &&
           indentWidth(stripLazy(bqLines[bqLines.length - 1] ?? '')) <= 3
         ) {
@@ -318,6 +318,7 @@ export function parse(md: string): TsmarkNode[] {
         ];
         let itemLoose = false;
         i++;
+        let prevBlank = false;
         while (i < lines.length) {
           const ind = indentWidth(lines[i]);
           const current = stripLazy(lines[i]);
@@ -333,12 +334,27 @@ export function parse(md: string): TsmarkNode[] {
               itemLoose = true;
               itemLines.push('');
               i++;
+              prevBlank = true;
               continue;
             }
             break;
           } else if (ind >= markerIndent) {
             itemLines.push(stripColumns(lines[i], markerIndent));
             i++;
+            prevBlank = false;
+          } else if (
+            !prevBlank &&
+            ind <= 3 &&
+            !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
+            !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
+            !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current) &&
+            !/^ {0,3}>/.test(current)
+          ) {
+            itemLines.push(
+              LAZY + stripColumns(lines[i], Math.min(ind, markerIndent)),
+            );
+            i++;
+            prevBlank = false;
           } else {
             break;
           }
@@ -1104,7 +1120,7 @@ export function convertToHTML(md: string): string {
     if (/^ {0,3}\[$/.test(prev)) return true;
     if (/^ {0,3}#{1,6}\s/.test(prev)) return true;
     if (/^ {0,3}>/.test(prev)) return true;
-    if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])\s/.test(prev)) return true;
+    if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(prev)) return true;
     if (/^ {0,3}(`{3,}|~{3,})/.test(prev)) return true;
     if (
       /^ {0,3}(?:\*\s*){3,}$/.test(prev) ||
