@@ -5,6 +5,76 @@ const LAZY = '\u0001';
 const htmlCandidate =
   /<\/?[A-Za-z][^>\n]*>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/g;
 
+const htmlBlockStartRegex = /^ {0,3}<\/?([A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)/;
+const htmlBlockTags = new Set([
+  'address',
+  'article',
+  'aside',
+  'base',
+  'basefont',
+  'blockquote',
+  'body',
+  'caption',
+  'center',
+  'col',
+  'colgroup',
+  'dd',
+  'details',
+  'dialog',
+  'dir',
+  'div',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'frame',
+  'frameset',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'header',
+  'hr',
+  'html',
+  'iframe',
+  'legend',
+  'li',
+  'link',
+  'main',
+  'menu',
+  'menuitem',
+  'nav',
+  'noframes',
+  'ol',
+  'optgroup',
+  'option',
+  'p',
+  'param',
+  'pre',
+  'script',
+  'search',
+  'section',
+  'summary',
+  'style',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'title',
+  'tr',
+  'track',
+  'ul',
+  'textarea',
+]);
+
 function isHtmlTag(tag: string): boolean {
   const openTag =
     /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
@@ -200,36 +270,54 @@ export function parse(md: string): TsmarkNode[] {
     // fenced code block
     const fenceMatch = stripped.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
     if (fenceMatch && indentWidth(fenceMatch[1]) <= 3) {
-      const fenceIndent = indentWidth(fenceMatch[1]);
-      const fence = fenceMatch[2];
-      const info = fenceMatch[3].trim();
-      const language = info
-        ? decodeEntities(unescapeMd(info.split(/\s+/)[0]))
-        : undefined;
-      i++;
-      const codeLines: string[] = [];
-      while (
-        i < lines.length &&
-        !stripLazy(lines[i]).trimStart().startsWith(fence)
-      ) {
-        codeLines.push(stripColumns(stripLazy(lines[i]), fenceIndent));
+      const char = fenceMatch[2][0];
+      const rest = fenceMatch[3];
+      if (char === '`' && rest.includes('`')) {
+        // info string contains fence character - not a fenced code block
+      } else {
+        const fenceIndent = indentWidth(fenceMatch[1]);
+        const fence = fenceMatch[2];
+        const info = fenceMatch[3].trim();
+        const language = info
+          ? decodeEntities(unescapeMd(info.split(/\s+/)[0]))
+          : undefined;
         i++;
-      }
-      const closed = i < lines.length && indentWidth(lines[i]) <= 3 &&
-        stripLazy(lines[i]).trimStart().startsWith(fence);
-      if (closed) i++; // skip closing fence
-      else {
-        while (codeLines.length > 0 && codeLines[codeLines.length - 1] === '') {
-          codeLines.pop();
+        const codeLines: string[] = [];
+        function isClosing(ln: string): boolean {
+          if (indentWidth(ln) > 3) return false;
+          const trimmed = ln.trimStart();
+          if (!trimmed.startsWith(fence[0])) return false;
+          let cnt = 0;
+          while (cnt < trimmed.length && trimmed[cnt] === fence[0]) cnt++;
+          if (cnt < fence.length) return false;
+          return trimmed.slice(cnt).trim() === '';
         }
+
+        while (i < lines.length) {
+          const ln = stripLazy(lines[i]);
+          if (isClosing(ln)) {
+            break;
+          }
+          codeLines.push(stripColumns(ln, fenceIndent));
+          i++;
+        }
+        const closed = i < lines.length && isClosing(stripLazy(lines[i]));
+        if (closed) i++; // skip closing fence
+        else {
+          while (
+            codeLines.length > 0 && codeLines[codeLines.length - 1] === ''
+          ) {
+            codeLines.pop();
+          }
+        }
+        const body = codeLines.join('\n');
+        nodes.push({
+          type: 'code_block',
+          content: body + (codeLines.length > 0 ? '\n' : ''),
+          language,
+        });
+        continue;
       }
-      const body = codeLines.join('\n');
-      nodes.push({
-        type: 'code_block',
-        content: body + (codeLines.length > 0 ? '\n' : ''),
-        language,
-      });
-      continue;
     }
 
     // indented code block (indentation >= 4 spaces)
@@ -281,12 +369,41 @@ export function parse(md: string): TsmarkNode[] {
 
     // Setext heading will be handled together with paragraph parsing
 
-    // HTML block (single line)
+    // HTML block
     {
-      const m = stripped.match(/^ {0,3}(<.*>)$/);
-      if (m && isHtmlTag(m[1])) {
-        nodes.push({ type: 'html', content: m[1] });
+      const mHtml = stripped.match(htmlBlockStartRegex);
+      if (mHtml && htmlBlockTags.has(mHtml[1].toLowerCase())) {
+        const tag = mHtml[1].toLowerCase();
+        const htmlLines: string[] = [stripped];
         i++;
+        if (['pre', 'script', 'style', 'textarea'].includes(tag)) {
+          while (i < lines.length) {
+            htmlLines.push(stripLazy(lines[i]));
+            if (new RegExp(`</${tag}>`, 'i').test(stripLazy(lines[i]))) {
+              i++;
+              break;
+            }
+            i++;
+          }
+        } else {
+          while (i < lines.length && stripLazy(lines[i]).trim() !== '') {
+            htmlLines.push(stripLazy(lines[i]));
+            i++;
+          }
+        }
+        nodes.push({ type: 'html', content: htmlLines.join('\n') });
+        continue;
+      } else if (
+        isHtmlTag(stripped) &&
+        (i === 0 || stripLazy(lines[i - 1]).trim() === '')
+      ) {
+        const htmlLines: string[] = [stripped];
+        i++;
+        while (i < lines.length && stripLazy(lines[i]).trim() !== '') {
+          htmlLines.push(stripLazy(lines[i]));
+          i++;
+        }
+        nodes.push({ type: 'html', content: htmlLines.join('\n') });
         continue;
       }
     }
@@ -307,7 +424,29 @@ export function parse(md: string): TsmarkNode[] {
           /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
           /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
           /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
-          /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i]))
+          /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
+          (() => {
+            const m = stripLazy(lines[i]).match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+            if (m && indentWidth(m[1]) <= 3) {
+              const ch = m[2][0];
+              const rest = m[3];
+              return !((ch === '`' && rest.includes('`')) ||
+                (ch === '~' && rest.includes('~')));
+            }
+            return false;
+          })() ||
+          (() => {
+            const trimmed = stripLazy(lines[i]);
+            const m = trimmed.match(htmlBlockStartRegex);
+            if (m && htmlBlockTags.has(m[1].toLowerCase())) {
+              if (trimmed.startsWith('</')) {
+                const tag = m[1].toLowerCase();
+                return !['pre', 'script', 'style', 'textarea'].includes(tag);
+              }
+              return true;
+            }
+            return false;
+          })()
         ) {
           break;
         }
@@ -494,9 +633,13 @@ function inlineToHTML(text: string, refs?: Map<string, RefDef>): string {
   const placeholders: string[] = [];
 
   // store code spans as placeholders before any other processing
-  text = text.replace(/(?<!\\)(`+)([\s\S]*?)\1/g, (_, _p1, p2) => {
+  text = text.replace(/(?<!\\)(`+)([\s\S]*?)\1/g, (_, p1, p2) => {
+    let content = p2.replace(/\n/g, ' ');
+    if (/^\s/.test(content) && /\s$/.test(content) && content.trim() !== '') {
+      content = content.slice(1, -1);
+    }
     const token = `\u0002${placeholders.length}\u0002`;
-    placeholders.push(`<code>${escapeHTML(p2.trim())}</code>`);
+    placeholders.push(`<code>${escapeHTML(content)}</code>`);
     return token;
   });
 
