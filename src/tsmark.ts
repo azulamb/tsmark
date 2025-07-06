@@ -234,7 +234,7 @@ export function parse(md: string): TsmarkNode[] {
             }
           }
           bqLines.push(rest);
-          prevBlank = false;
+          prevBlank = rest.trim() === '';
           i++;
         } else if (current.trim() === '') {
           break;
