@@ -1311,15 +1311,21 @@ function inlineToHTML(
   out = out.replace(/\\\n/g, '<br />\n');
 
   out = out.replace(
-    /\*\*([^*\s](?:[^*]*[^*\s])?)\*\*(?!\*)/g,
+    /\*\*([^*\s\u00A0](?:[^*]*[^*\s\u00A0])?)\*\*(?!\*)/g,
     '<strong>$1</strong>',
   );
   out = out.replace(
-    /__([^_\s](?:[^_]*[^_\s])?)__/g,
-    '<strong>$1</strong>',
+    /(^|[^A-Za-z0-9_])__([^_\s\u00A0](?:[^_]*[^_\s\u00A0])?)__(?=[^A-Za-z0-9_]|$)/g,
+    '$1<strong>$2</strong>',
   );
-  out = out.replace(/\*([^*\s](?:[^*]*[^*\s])?)\*(?!\*)/g, '<em>$1</em>');
-  out = out.replace(/_([^_\s](?:[^_]*[^_\s])?)_/g, '<em>$1</em>');
+  out = out.replace(
+    /\*([^*\s\u00A0](?:[^*]*[^*\s\u00A0])?)\*(?!\*)/g,
+    '<em>$1</em>',
+  );
+  out = out.replace(
+    /(^|[^A-Za-z0-9_])_([^_\s\u00A0](?:[^_]*[^_\s\u00A0])?)_(?=[^A-Za-z0-9_]|$)/g,
+    '$1<em>$2</em>',
+  );
 
   // trim spaces before emphasis at line start
   out = out.replace(/(^|\n)\s+(?=<(?:em|strong)>)/g, '$1');
