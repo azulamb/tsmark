@@ -1310,22 +1310,7 @@ function inlineToHTML(
   // backslash at line end creates hard line break
   out = out.replace(/\\\n/g, '<br />\n');
 
-  out = out.replace(
-    /\*\*([^*\s\u00A0](?:[^*]*[^*\s\u00A0])?)\*\*(?!\*)/g,
-    '<strong>$1</strong>',
-  );
-  out = out.replace(
-    /(^|[^A-Za-z0-9_])__([^_\s\u00A0](?:[^_]*[^_\s\u00A0])?)__(?=[^A-Za-z0-9_]|$)/g,
-    '$1<strong>$2</strong>',
-  );
-  out = out.replace(
-    /\*([^*\s\u00A0](?:[^*]*[^*\s\u00A0])?)\*(?!\*)/g,
-    '<em>$1</em>',
-  );
-  out = out.replace(
-    /(^|[^A-Za-z0-9_])_([^_\s\u00A0](?:[^_]*[^_\s\u00A0])?)_(?=[^A-Za-z0-9_]|$)/g,
-    '$1<em>$2</em>',
-  );
+  out = applyEmphasis(out);
 
   // trim spaces before emphasis at line start
   out = out.replace(/(^|\n)\s+(?=<(?:em|strong)>)/g, '$1');
@@ -1353,6 +1338,105 @@ function inlineToHTML(
   }
 
   return out;
+}
+
+function applyEmphasis(text: string): string {
+  type Delim = {
+    char: string;
+    count: number;
+    canOpen: boolean;
+    canClose: boolean;
+    idx: number;
+  };
+
+  function isWhitespace(ch: string): boolean {
+    return ch === '' || /\s/.test(ch);
+  }
+
+  function isPunctuation(ch: string): boolean {
+    return /[\p{P}\p{S}]/u.test(ch);
+  }
+
+  const tokens: { text: string; delim?: Delim }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '*' || ch === '_') {
+      let j = i;
+      while (j < text.length && text[j] === ch) j++;
+      const count = j - i;
+      const prev = i === 0 ? '' : text[i - 1];
+      const next = j >= text.length ? '' : text[j];
+      const lf = !isWhitespace(next) && (!isPunctuation(next) ||
+        isWhitespace(prev) || isPunctuation(prev));
+      const rf = !isWhitespace(prev) && (!isPunctuation(prev) ||
+        isWhitespace(next) || isPunctuation(next));
+      let canOpen, canClose;
+      if (ch === '*') {
+        canOpen = lf;
+        canClose = rf;
+      } else {
+        canOpen = lf && (!rf || isPunctuation(prev));
+        canClose = rf && (!lf || isPunctuation(next));
+      }
+      tokens.push({
+        text: text.slice(i, j),
+        delim: { char: ch, count, canOpen, canClose, idx: tokens.length },
+      });
+      i = j;
+    } else {
+      tokens.push({ text: ch });
+      i++;
+    }
+  }
+
+  const stack: Delim[] = [];
+  for (let idx = 0; idx < tokens.length; idx++) {
+    const t = tokens[idx];
+    if (!t.delim) continue;
+    const d = t.delim;
+    if (d.canClose) {
+      let openerIndex = -1;
+      for (let j = stack.length - 1; j >= 0; j--) {
+        const op = stack[j];
+        if (op.char !== d.char) continue;
+        if (!op.canOpen) continue;
+        if (
+          (op.canClose || d.canOpen) && ((op.count + d.count) % 3 === 0) &&
+          (op.count % 3 !== 0 || d.count % 3 !== 0)
+        ) {
+          continue;
+        }
+        openerIndex = j;
+        break;
+      }
+      if (openerIndex !== -1) {
+        const opener = stack[openerIndex];
+        stack.splice(openerIndex);
+        const useStrong = d.count >= 2 && opener.count >= 2 ? 2 : 1;
+        opener.count -= useStrong;
+        d.count -= useStrong;
+        tokens[opener.idx].text = useStrong === 2 ? '<strong>' : '<em>';
+        tokens[idx].text = useStrong === 2 ? '</strong>' : '</em>';
+        if (opener.count > 0) {
+          tokens.splice(opener.idx + 1, 0, {
+            text: opener.char.repeat(opener.count),
+          });
+          idx += 0; // adjust automatically since array length increased
+        }
+        if (d.count > 0) {
+          tokens.splice(idx, 0, { text: d.char.repeat(d.count) });
+          idx++; // skip over inserted text
+        }
+        continue;
+      }
+    }
+    if (d.canOpen) {
+      stack.push(d);
+    }
+  }
+
+  return tokens.map((t) => t.text).join('');
 }
 
 export function convertToHTML(md: string): string {
