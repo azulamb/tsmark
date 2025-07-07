@@ -1425,6 +1425,15 @@ function applyEmphasisOnce(text: string): string {
       if (openerIndex !== -1) {
         const opener = stack[openerIndex];
         stack.splice(openerIndex);
+        // inner delimiters between opener and closer lose their ability to
+        // form emphasis, per CommonMark rule 15
+        for (let k = opener.idx + 1; k < idx; k++) {
+          const tok = tokens[k];
+          if (tok.delim) {
+            tok.delim.canOpen = false;
+            tok.delim.canClose = false;
+          }
+        }
         const useStrong = d.count >= 2 && opener.count >= 2 ? 2 : 1;
         opener.count -= useStrong;
         d.count -= useStrong;
@@ -1458,7 +1467,16 @@ function applyEmphasis(text: string): string {
   let curr = text;
   while (curr !== prev) {
     prev = curr;
+    const placeholders: string[] = [];
+    curr = curr.replace(/<(?:em|strong)>[\s\S]*?<\/(?:em|strong)>/g, (seg) => {
+      return seg.replace(/[*_]/g, (ch) => {
+        const token = `\u0004${placeholders.length}\u0004`;
+        placeholders.push(ch);
+        return token;
+      });
+    });
     curr = applyEmphasisOnce(curr);
+    curr = curr.replace(/\u0004(\d+)\u0004/g, (_, idx) => placeholders[+idx]);
   }
   return curr;
 }
