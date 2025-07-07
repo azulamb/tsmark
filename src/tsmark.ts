@@ -77,7 +77,7 @@ const htmlBlockTags = new Set([
 
 function isHtmlTag(tag: string): boolean {
   const openTag =
-    /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:=(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/;
+    /^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/s;
   const closeTag = /^<\/[A-Za-z][A-Za-z0-9-]*\s*>$/;
   // CommonMark allows HTML comments even if they don't strictly conform to the
   // HTML specification.  The previous implementation tried to validate the
@@ -93,6 +93,8 @@ function isHtmlTag(tag: string): boolean {
     openTag.test(tag) ||
     closeTag.test(tag) ||
     comment.test(tag) ||
+    tag === '<!-->' ||
+    tag === '<!--->' ||
     proc.test(tag) ||
     decl.test(tag) ||
     cdata.test(tag)
@@ -941,21 +943,132 @@ function inlineToHTML(
   });
 
   // store HTML tags as placeholders before processing escapes
-  text = text.replace(htmlCandidate, (m, offset: number, str: string) => {
-    if (
-      (isHtmlTag(m) || m.startsWith('<!-->') || m.startsWith('<!--->')) &&
-      (offset === 0 || (str[offset - 1] !== '(' && str[offset - 1] !== '\\'))
-    ) {
-      let html = m;
-      if (html.startsWith('<!-->') || html.startsWith('<!--->')) {
-        html = html.replace(/>$/, '&gt;');
+  {
+    let result = '';
+    let idx = 0;
+    while (idx < text.length) {
+      const lt = text.indexOf('<', idx);
+      if (lt === -1) {
+        result += text.slice(idx);
+        break;
       }
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
+      result += text.slice(idx, lt);
+
+      if (text.startsWith('<!--', lt)) {
+        let candidate: string;
+        if (text.startsWith('<!-->', lt) || text.startsWith('<!--->', lt)) {
+          candidate = text.startsWith('<!--->', lt) ? '<!--->' : '<!-->';
+          const end = lt + candidate.length;
+          if (
+            isHtmlTag(candidate) &&
+            (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+          ) {
+            const token = `\u0000${placeholders.length}\u0000`;
+            placeholders.push(candidate);
+            result += token;
+          } else {
+            result += candidate;
+          }
+          idx = end;
+          continue;
+        }
+        const end = text.indexOf('-->', lt + 4);
+        candidate = end === -1 ? text.slice(lt) : text.slice(lt, end + 3);
+        if (
+          isHtmlTag(candidate) &&
+          (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+        ) {
+          const token = `\u0000${placeholders.length}\u0000`;
+          placeholders.push(candidate);
+          result += token;
+        } else {
+          result += candidate;
+        }
+        idx = end === -1 ? text.length : end + 3;
+        continue;
+      } else if (text.startsWith('<?', lt)) {
+        const end = text.indexOf('?>', lt + 2);
+        const candidate = end === -1 ? text.slice(lt) : text.slice(lt, end + 2);
+        if (
+          isHtmlTag(candidate) &&
+          (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+        ) {
+          const token = `\u0000${placeholders.length}\u0000`;
+          placeholders.push(candidate);
+          result += token;
+        } else {
+          result += candidate;
+        }
+        idx = end === -1 ? text.length : end + 2;
+        continue;
+      } else if (text.startsWith('<![CDATA[', lt)) {
+        const end = text.indexOf(']]>', lt + 9);
+        const candidate = end === -1 ? text.slice(lt) : text.slice(lt, end + 3);
+        if (
+          isHtmlTag(candidate) &&
+          (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+        ) {
+          const token = `\u0000${placeholders.length}\u0000`;
+          placeholders.push(candidate);
+          result += token;
+        } else {
+          result += candidate;
+        }
+        idx = end === -1 ? text.length : end + 3;
+        continue;
+      } else if (text.startsWith('<!', lt)) {
+        const end = text.indexOf('>', lt + 2);
+        const candidate = end === -1 ? text.slice(lt) : text.slice(lt, end + 1);
+        if (
+          isHtmlTag(candidate) &&
+          (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+        ) {
+          const token = `\u0000${placeholders.length}\u0000`;
+          placeholders.push(candidate);
+          result += token;
+        } else {
+          result += candidate;
+        }
+        idx = end === -1 ? text.length : end + 1;
+        continue;
+      }
+
+      let i = lt + 1;
+      let quote: string | null = null;
+      while (i < text.length) {
+        const ch = text[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+          i++;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === '>') {
+          const candidate = text.slice(lt, i + 1);
+          if (
+            isHtmlTag(candidate) &&
+            (lt === 0 || (text[lt - 1] !== '(' && text[lt - 1] !== '\\'))
+          ) {
+            const token = `\u0000${placeholders.length}\u0000`;
+            placeholders.push(candidate);
+            result += token;
+            idx = i + 1;
+          } else {
+            result += candidate;
+            idx = i + 1;
+          }
+          break;
+        }
+        i++;
+      }
+      if (i >= text.length) {
+        result += text.slice(lt);
+        break;
+      }
     }
-    return m;
-  });
+    text = result;
+  }
 
   // handle backslash escapes by storing them as placeholders
   text = text.replace(
