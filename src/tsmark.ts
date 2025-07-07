@@ -1365,6 +1365,7 @@ function applyEmphasisOnce(text: string): string {
   }
 
   function isPunctuation(ch: string): boolean {
+    if (ch === '<' || ch === '>') return false;
     return /[\p{P}\p{S}]/u.test(ch);
   }
 
