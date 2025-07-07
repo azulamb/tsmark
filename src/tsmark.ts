@@ -1152,7 +1152,7 @@ function inlineToHTML(
 
   // inline links (direct) with angle brackets around destination
   text = text.replace(
-    /\[([^\[\]]*)\]\(<([^\n>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
+    /\[([^\[\]]*)\]\(<([^\n>]*)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
     (m, textContent, href, t1, t2, t3) => {
       const title = t1 || t2 || t3;
       const decodedHref = decodeEntities(
