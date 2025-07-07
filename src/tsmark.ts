@@ -1152,7 +1152,7 @@ function inlineToHTML(
 
   // inline links (direct) with angle brackets around destination
   text = text.replace(
-    /\[([^\[\]]*)\]\(<([^>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
+    /\[([^\[\]]*)\]\(<([^\n>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
     (m, textContent, href, t1, t2, t3) => {
       const title = t1 || t2 || t3;
       const decodedHref = decodeEntities(
@@ -1207,6 +1207,17 @@ function inlineToHTML(
     const inner = inlineToHTML(textContent, refs, placeholders);
     placeholders.push(`<a href="">${inner}</a>`);
     return token;
+  });
+
+  // handle raw HTML tags that appear inside parentheses but are not part
+  // of a valid link destination
+  text = text.replace(/\((<[^>]+>)/g, (m, tag) => {
+    if (isHtmlTag(tag)) {
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(tag);
+      return '(' + token;
+    }
+    return m;
   });
 
   // reference-style images
