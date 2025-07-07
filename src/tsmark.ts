@@ -899,7 +899,7 @@ function inlineToHTML(
 ): string {
   // store code spans as placeholders before any other processing
   text = text.replace(
-    /(?<![\\"'=])(`+)([\s\S]*?)(?<!`)\1(?!`)/g,
+    /(?<![\\"'=`])(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/g,
     (full, p1, p2, offset, str) => {
       const start = offset;
       const end = offset + full.length;
