@@ -1351,7 +1351,7 @@ function inlineToHTML(
   return out;
 }
 
-function applyEmphasis(text: string): string {
+function applyEmphasisOnce(text: string): string {
   type Delim = {
     char: string;
     count: number;
@@ -1430,13 +1430,15 @@ function applyEmphasis(text: string): string {
         tokens[opener.idx].text = useStrong === 2 ? '<strong>' : '<em>';
         tokens[idx].text = useStrong === 2 ? '</strong>' : '</em>';
         if (opener.count > 0) {
-          tokens.splice(opener.idx + 1, 0, {
+          // leftover opening delimiters should appear before the opening tag
+          tokens.splice(opener.idx, 0, {
             text: opener.char.repeat(opener.count),
           });
-          idx += 0; // adjust automatically since array length increased
+          idx++; // adjust index as we inserted before opener
         }
         if (d.count > 0) {
-          tokens.splice(idx, 0, { text: d.char.repeat(d.count) });
+          // leftover closing delimiters should appear after the closing tag
+          tokens.splice(idx + 1, 0, { text: d.char.repeat(d.count) });
           idx++; // skip over inserted text
         }
         continue;
@@ -1448,6 +1450,16 @@ function applyEmphasis(text: string): string {
   }
 
   return tokens.map((t) => t.text).join('');
+}
+
+function applyEmphasis(text: string): string {
+  let prev = '';
+  let curr = text;
+  while (curr !== prev) {
+    prev = curr;
+    curr = applyEmphasisOnce(curr);
+  }
+  return curr;
 }
 
 export function convertToHTML(md: string): string {
