@@ -991,8 +991,35 @@ function inlineToHTML(
 
   // inline images (direct)
   text = text.replace(
-    /!\[((?:\\.|[^\]])*)\]\(([^\s)]+)(?:\s+"([^"]+)")?\)/g,
-    (_, alt, href, title) => {
+    /!\[((?:\\.|[^\[\]])*)\]\(<([^>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
+    (m, alt, href, t1, t2, t3) => {
+      const title = t1 || t2 || t3;
+      const src = encodeHref(
+        restoreEntities(restoreEscapes(href)),
+      );
+      const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
+      let html = `<img src="${src}" alt="${escapeHTML(altPlain)}"`;
+      if (title) {
+        html += ` title="${
+          escapeHTML(restoreEntities(restoreEscapes(title)))
+        }"`;
+      }
+      html += ' />';
+      const token = `\u0000${placeholders.length}\u0000`;
+      placeholders.push(html);
+      return token;
+    },
+  );
+
+  text = text.replace(
+    /!\[((?:\\.|[^\[\]])*)\]\(((?:\\.|[^()\\]|\([^()\\]*\))*?)\)/g,
+    (m, alt, inside) => {
+      const m2 = inside.match(
+        /^[ \t\n]*([^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
+      );
+      if (!m2) return m;
+      let href = restoreEntities(restoreEscapes(m2[1]));
+      const title = m2[2] || m2[3] || m2[4];
       const src = encodeHref(
         restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
       );
