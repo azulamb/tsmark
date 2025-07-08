@@ -1,4 +1,4 @@
-import type { RefDef, TsmarkNode } from '../types.d.ts';
+import type { TsmarkNode } from '../types.d.ts';
 import { isHtmlTag, stripLazy } from '../utils.ts';
 
 export const htmlBlockStartRegex =
@@ -151,11 +151,4 @@ export function parseHtmlBlock(
   }
 
   return null;
-}
-
-export function htmlToHTML(
-  node: TsmarkNode & { type: 'html' },
-  _refs?: Map<string, RefDef>,
-): string {
-  return node.content;
 }

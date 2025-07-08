@@ -1,7 +1,6 @@
-import type { RefDef, TsmarkNode } from '../types.d.ts';
+import type { TsmarkNode } from '../types.d.ts';
 import {
   decodeEntities,
-  escapeHTML,
   indentWidth,
   stripColumns,
   stripIndent,
@@ -89,15 +88,4 @@ export function parseCodeBlock(
   }
 
   return null;
-}
-
-export function codeBlockToHTML(
-  node: TsmarkNode & { type: 'code_block' },
-  _refs?: Map<string, RefDef>,
-): string {
-  const escaped = escapeHTML(node.content);
-  const langClass = node.language
-    ? ` class="language-${escapeHTML(node.language)}"`
-    : '';
-  return `<pre><code${langClass}>${escaped}</code></pre>`;
 }

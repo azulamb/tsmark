@@ -1,4 +1,4 @@
-import type { RefDef, TsmarkNode } from '../types.d.ts';
+import type { TsmarkNode } from '../types.d.ts';
 import { indentWidth, LAZY, stripColumns, stripLazy } from '../utils.ts';
 
 export function parseBlockquote(
@@ -72,15 +72,4 @@ export function parseBlockquote(
 
   const children = parseFn(bqLines.join('\n'));
   return { node: { type: 'blockquote', children }, next: i };
-}
-
-export function blockquoteToHTML(
-  node: TsmarkNode & { type: 'blockquote' },
-  toHTML: (node: TsmarkNode) => string,
-  refs?: Map<string, RefDef>,
-): string {
-  const inner = node.children.map((n) => toHTML(n)).join('\n');
-  return inner === ''
-    ? '<blockquote>\n</blockquote>'
-    : `<blockquote>\n${inner}\n</blockquote>`;
 }

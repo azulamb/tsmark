@@ -1,11 +1,11 @@
 import type { RefDef, TsmarkNode } from './types.d.ts';
-import { headingToHTML } from './nodes/heading.ts';
-import { paragraphToHTML } from './nodes/paragraph.ts';
-import { codeBlockToHTML } from './nodes/code_block.ts';
-import { listToHTML } from './nodes/list.ts';
-import { blockquoteToHTML } from './nodes/blockquote.ts';
-import { thematicBreakToHTML } from './nodes/thematic_break.ts';
-import { htmlToHTML } from './nodes/html.ts';
+import { headingToHTML } from './html/heading.ts';
+import { paragraphToHTML } from './html/paragraph.ts';
+import { codeBlockToHTML } from './html/code_block.ts';
+import { listToHTML } from './html/list.ts';
+import { blockquoteToHTML } from './html/blockquote.ts';
+import { thematicBreakToHTML } from './html/thematic_break.ts';
+import { htmlToHTML } from './html/html.ts';
 import {
   indentWidth,
   isValidLabel,
