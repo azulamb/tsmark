@@ -80,15 +80,6 @@ function parseBlocks(md: string, refs: Map<string, RefDef>): TsmarkNode[] {
   return nodes;
 }
 
-export function parse(
-  md: string,
-): { nodes: TsmarkNode[]; refs: Map<string, RefDef> } {
-  const lines = md.replace(/\r\n?/g, '\n').split('\n');
-  const { filtered, refs } = extractRefDefs(lines);
-  const nodes = parseBlocks(filtered.join('\n'), refs);
-  return { nodes, refs };
-}
-
 function extractRefDefs(lines: string[]): {
   filtered: string[];
   refs: Map<string, RefDef>;
@@ -254,4 +245,13 @@ function extractRefDefs(lines: string[]): {
     }
   }
   return { filtered, refs };
+}
+
+export function parse(
+  md: string,
+): { nodes: TsmarkNode[]; refs: Map<string, RefDef> } {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const { filtered, refs } = extractRefDefs(lines);
+  const nodes = parseBlocks(filtered.join('\n'), refs);
+  return { nodes, refs };
 }
