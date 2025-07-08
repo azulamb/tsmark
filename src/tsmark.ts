@@ -14,67 +14,67 @@ import {
   unescapeMd,
 } from './utils.ts';
 
+function parseBlock(
+  lines: string[],
+  index: number,
+  refs: Map<string, RefDef>,
+): { node?: TsmarkNode; next: number } {
+  const line = lines[index];
+  const stripped = stripLazy(line);
+
+  const tbNode = parseThematicBreak(stripped);
+  if (tbNode) {
+    return { node: tbNode, next: index + 1 };
+  }
+
+  const bqResult = parseBlockquote(
+    lines,
+    index,
+    (src) => parseBlocks(src, refs),
+  );
+  if (bqResult) {
+    return { node: bqResult.node, next: bqResult.next };
+  }
+
+  const listResult = parseList(lines, index, (src) => parseBlocks(src, refs));
+  if (listResult) {
+    return { node: listResult.node, next: listResult.next };
+  }
+
+  const codeResult = parseCodeBlock(lines, index);
+  if (codeResult) {
+    return { node: codeResult.node, next: codeResult.next };
+  }
+
+  const atxNode = parseATXHeading(stripped);
+  if (atxNode) {
+    return { node: atxNode, next: index + 1 };
+  }
+
+  const htmlResult = parseHtmlBlock(lines, index);
+  if (htmlResult) {
+    return { node: htmlResult.node, next: htmlResult.next };
+  }
+
+  if (stripped.trim() !== '') {
+    const result = parseParagraph(lines, index);
+    if (result) {
+      return result;
+    }
+  }
+
+  return { next: index + 1 };
+}
+
 function parseBlocks(md: string, refs: Map<string, RefDef>): TsmarkNode[] {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
   const nodes: TsmarkNode[] = [];
 
   let i = 0;
   while (i < lines.length) {
-    const line = lines[i];
-    const stripped = stripLazy(line);
-
-    const tbNode = parseThematicBreak(stripped);
-    if (tbNode) {
-      nodes.push(tbNode);
-      i++;
-      continue;
-    }
-
-    const bqResult = parseBlockquote(lines, i, (src) => parseBlocks(src, refs));
-    if (bqResult) {
-      nodes.push(bqResult.node);
-      i = bqResult.next;
-      continue;
-    }
-
-    const listResult = parseList(lines, i, (src) => parseBlocks(src, refs));
-    if (listResult) {
-      nodes.push(listResult.node);
-      i = listResult.next;
-      continue;
-    }
-
-    const codeResult = parseCodeBlock(lines, i);
-    if (codeResult) {
-      nodes.push(codeResult.node);
-      i = codeResult.next;
-      continue;
-    }
-
-    const atxNode = parseATXHeading(stripped);
-    if (atxNode) {
-      nodes.push(atxNode);
-      i++;
-      continue;
-    }
-
-    const htmlResult = parseHtmlBlock(lines, i);
-    if (htmlResult) {
-      nodes.push(htmlResult.node);
-      i = htmlResult.next;
-      continue;
-    }
-
-    if (stripped.trim() !== '') {
-      const result = parseParagraph(lines, i);
-      if (result) {
-        nodes.push(result.node);
-        i = result.next;
-        continue;
-      }
-    }
-
-    i++;
+    const { node, next } = parseBlock(lines, i, refs);
+    if (node) nodes.push(node);
+    i = next;
   }
 
   return nodes;
@@ -110,6 +110,60 @@ function extractRefDefs(lines: string[]): {
     return false;
   }
 
+  function collectRest(
+    start: number,
+    rest: string,
+  ): { rest: string; nextIdx: number } {
+    let j = start;
+    while (j + 1 < lines.length) {
+      const nxt = lines[j + 1];
+      const t = nxt.trimStart();
+      const restTrim = rest.trim();
+      if (titlePattern.test(restTrim)) {
+        const combined = `${restTrim}\n${t}`.trim();
+        if (!titlePattern.test(combined)) break;
+      }
+      if (t === '' || startDef.test(nxt)) break;
+      rest += '\n' + t;
+      j++;
+    }
+    return { rest: rest.trim(), nextIdx: j };
+  }
+
+  function registerRef(
+    label: string,
+    rest: string,
+    startIdx: number,
+    first: string,
+    lineForDef: string,
+    bq: RegExpMatchArray | null,
+  ): { next: number | null; handled: boolean } {
+    const { rest: trimmed, nextIdx } = collectRest(startIdx, rest);
+    const m2 = trimmed.match(titlePattern);
+    if (m2 && isValidLabel(label)) {
+      let url = m2[1];
+      if (url.startsWith('<') && url.endsWith('>')) {
+        url = url.slice(1, -1);
+      }
+      const title = m2[2] || m2[3] || m2[4];
+      const key = normalizeLabel(label);
+      if (key !== '' && !refs.has(key)) {
+        refs.set(key, {
+          url: unescapeMd(url),
+          title: title ? unescapeMd(title) : undefined,
+        });
+      }
+      if (bq) {
+        const prefix = first.slice(0, first.length - lineForDef.length);
+        filtered.push(prefix.trimEnd());
+      }
+      if (key !== '') {
+        return { next: nextIdx, handled: true };
+      }
+    }
+    return { next: null, handled: false };
+  }
+
   let fence: { char: string; len: number } | null = null;
   for (let i = 0; i < lines.length; i++) {
     const first = lines[i];
@@ -132,47 +186,13 @@ function extractRefDefs(lines: string[]): {
     const canStart = canStartDef(i);
     let handled = false;
     const m = canStart ? lineForDef.match(startDef) : null;
-    if (m && isValidLabel(m[1])) {
-      let rest = m[2];
-      let j = i;
-      while (j + 1 < lines.length) {
-        const nxt = lines[j + 1];
-        const t = nxt.trimStart();
-        const restTrim = rest.trim();
-        if (titlePattern.test(restTrim)) {
-          const combined = `${restTrim}\n${t}`.trim();
-          if (!titlePattern.test(combined)) break;
-        }
-        if (t === '' || startDef.test(nxt)) break;
-        rest += '\n' + t;
-        j++;
-      }
-      const nextIdx = j;
-      rest = rest.trim();
-      const m2 = rest.match(titlePattern);
-      if (m2) {
-        let url = m2[1];
-        if (url.startsWith('<') && url.endsWith('>')) {
-          url = url.slice(1, -1);
-        }
-        const title = m2[2] || m2[3] || m2[4];
-        const key = normalizeLabel(m[1]);
-        if (key !== '' && !refs.has(key)) {
-          refs.set(key, {
-            url: unescapeMd(url),
-            title: title ? unescapeMd(title) : undefined,
-          });
-        }
-        if (bq) {
-          const prefix = first.slice(0, first.length - lineForDef.length);
-          filtered.push(prefix.trimEnd());
-        }
-        if (key !== '') {
-          i = nextIdx;
-          handled = true;
-          prevWasDef = true;
-          continue;
-        }
+    if (m) {
+      const res = registerRef(m[1], m[2], i, first, lineForDef, bq);
+      if (res.handled && res.next !== null) {
+        i = res.next;
+        handled = true;
+        prevWasDef = true;
+        continue;
       }
     }
     if (!handled) {
@@ -197,44 +217,12 @@ function extractRefDefs(lines: string[]): {
           label += ln;
         }
         if (rest !== '') {
-          while (j + 1 < lines.length) {
-            const nxt = lines[j + 1];
-            const t = nxt.trimStart();
-            const restTrim = rest.trim();
-            if (titlePattern.test(restTrim)) {
-              const combined = `${restTrim}\n${t}`.trim();
-              if (!titlePattern.test(combined)) break;
-            }
-            if (t === '' || startDef.test(nxt)) break;
-            rest += '\n' + t;
-            j++;
-          }
-          const nextIdx = j;
-          rest = rest.trim();
-          const m2 = rest.match(titlePattern);
-          if (m2 && isValidLabel(label)) {
-            let url = m2[1];
-            if (url.startsWith('<') && url.endsWith('>')) {
-              url = url.slice(1, -1);
-            }
-            const title = m2[2] || m2[3] || m2[4];
-            const key = normalizeLabel(label);
-            if (key !== '' && !refs.has(key)) {
-              refs.set(key, {
-                url: unescapeMd(url),
-                title: title ? unescapeMd(title) : undefined,
-              });
-            }
-            if (bq) {
-              const prefix = first.slice(0, first.length - lineForDef.length);
-              filtered.push(prefix.trimEnd());
-            }
-            if (key !== '') {
-              i = nextIdx;
-              handled = true;
-              prevWasDef = true;
-              continue;
-            }
+          const res = registerRef(label, rest, j, first, lineForDef, bq);
+          if (res.handled && res.next !== null) {
+            i = res.next;
+            handled = true;
+            prevWasDef = true;
+            continue;
           }
         }
       }
