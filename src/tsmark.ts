@@ -3,8 +3,8 @@ import {
   headingToHTML,
   parseATXHeading,
   parseSetextHeading,
-} from './heading.ts';
-import { inlineToHTML } from './inline.ts';
+} from './nodes/heading.ts';
+import { inlineToHTML } from './nodes/inline.ts';
 import {
   caseFold,
   decodeEntities,
