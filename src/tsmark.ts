@@ -4,6 +4,7 @@ import { parseParagraph } from './nodes/paragraph.ts';
 import { parseCodeBlock } from './nodes/code_block.ts';
 import { parseList } from './nodes/list.ts';
 import { parseBlockquote } from './nodes/blockquote.ts';
+import { parseThematicBreak } from './nodes/thematic_break.ts';
 import {
   caseFold,
   encodeHref,
@@ -97,12 +98,9 @@ export function parse(md: string): TsmarkNode[] {
     const stripped = stripLazy(line);
 
     // thematic break
-    if (
-      /^ {0,3}(\*\s*){3,}$/.test(stripped) ||
-      /^ {0,3}(-\s*){3,}$/.test(stripped) ||
-      /^ {0,3}(_\s*){3,}$/.test(stripped)
-    ) {
-      nodes.push({ type: 'thematic_break' });
+    const tbNode = parseThematicBreak(stripped);
+    if (tbNode) {
+      nodes.push(tbNode);
       i++;
       continue;
     }
