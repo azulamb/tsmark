@@ -1,10 +1,7 @@
 import type { RefDef, TsmarkNode } from './types.d.ts';
-import {
-  headingToHTML,
-  parseATXHeading,
-  parseSetextHeading,
-} from './nodes/heading.ts';
+import { headingToHTML, parseATXHeading } from './nodes/heading.ts';
 import { inlineToHTML } from './nodes/inline.ts';
+import { paragraphToHTML, parseParagraph } from './nodes/paragraph.ts';
 import {
   caseFold,
   decodeEntities,
@@ -519,81 +516,10 @@ export function parse(md: string): TsmarkNode[] {
 
     // paragraph and setext heading
     if (stripped.trim() !== '') {
-      const paraLines: string[] = [];
-      while (i < lines.length && stripLazy(lines[i]).trim() !== '') {
-        if (
-          !lines[i].startsWith(LAZY) &&
-          /^ {0,3}([-=])+\s*$/.test(stripLazy(lines[i])) &&
-          paraLines.length > 0
-        ) {
-          break;
-        }
-        if (
-          !lines[i].startsWith(LAZY) && (
-            /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
-            /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
-            /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
-            /^ {0,3}>/.test(stripLazy(lines[i])) ||
-            /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
-            (() => {
-              const m = stripLazy(lines[i]).match(
-                /^ {0,3}(\d{1,9})([.)])[ \t]+/,
-              );
-              return m && m[1] === '1';
-            })() ||
-            /^ {0,3}#{1,6}(?:\s|$)/.test(stripLazy(lines[i])) ||
-            (() => {
-              const m = stripLazy(lines[i]).match(/^(\s*)(`{3,}|~{3,})(.*)$/);
-              if (m && indentWidth(m[1]) <= 3) {
-                const ch = m[2][0];
-                const rest = m[3];
-                return !((ch === '`' && rest.includes('`')) ||
-                  (ch === '~' && rest.includes('~')));
-              }
-              return false;
-            })() ||
-            (() => {
-              const trimmed = stripLazy(lines[i]);
-              const m = trimmed.match(htmlBlockStartRegex);
-              if (m && htmlBlockTags.has(m[1].toLowerCase())) {
-                if (trimmed.startsWith('</')) {
-                  const tag = m[1].toLowerCase();
-                  return !['pre', 'script', 'style', 'textarea'].includes(tag);
-                }
-                return true;
-              }
-              return false;
-            })()
-          )
-        ) {
-          break;
-        }
-        const ln = lines[i];
-        if (indentWidth(ln) >= 4) {
-          paraLines.push(stripColumns(ln, indentWidth(ln)));
-        } else {
-          const ind = Math.min(indentWidth(ln), 3);
-          paraLines.push(stripColumns(ln, ind));
-        }
-        i++;
-        if (
-          i < lines.length &&
-          !lines[i].startsWith(LAZY)
-        ) {
-          const setext = parseSetextHeading(
-            paraLines,
-            stripLazy(lines[i]),
-          );
-          if (setext) {
-            nodes.push(setext);
-            i++;
-            paraLines.length = 0;
-            continue main;
-          }
-        }
-      }
-      if (paraLines.length > 0) {
-        nodes.push({ type: 'paragraph', content: paraLines.join('\n') });
+      const result = parseParagraph(lines, i);
+      if (result) {
+        nodes.push(result.node);
+        i = result.next;
         continue;
       }
     }
@@ -609,7 +535,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   if (node.type === 'heading') {
     return headingToHTML(node, refs);
   } else if (node.type === 'paragraph') {
-    return `<p>${inlineToHTML(node.content, refs)}</p>`;
+    return paragraphToHTML(node, refs);
   } else if (node.type === 'code_block') {
     const escaped = escapeHTML(node.content);
     const langClass = node.language
