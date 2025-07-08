@@ -1,5 +1,5 @@
-import type { RefDef, TsmarkNode } from './types.d.ts';
-import { inlineToHTML } from './inline.ts';
+import type { RefDef, TsmarkNode } from '../types.js';
+import { inlineToHTML } from '../inline.ts';
 
 export function parseATXHeading(line: string): TsmarkNode | null {
   const atx = line.match(/^ {0,3}(#{1,6})(.*)$/);
