@@ -4,6 +4,7 @@ import { paragraphToHTML } from './nodes/paragraph.ts';
 import { codeBlockToHTML } from './nodes/code_block.ts';
 import { listToHTML } from './nodes/list.ts';
 import { blockquoteToHTML } from './nodes/blockquote.ts';
+import { thematicBreakToHTML } from './nodes/thematic_break.ts';
 import {
   indentWidth,
   isValidLabel,
@@ -26,7 +27,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'blockquote') {
     return blockquoteToHTML(node, (n) => nodeToHTML(n, refs), refs);
   } else if (node.type === 'thematic_break') {
-    return '<hr />';
+    return thematicBreakToHTML(node);
   } else if (node.type === 'html') {
     return node.content;
   }

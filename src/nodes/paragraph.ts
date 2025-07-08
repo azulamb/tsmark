@@ -1,6 +1,7 @@
 import type { RefDef, TsmarkNode } from '../types.d.ts';
 import { inlineToHTML } from './inline.ts';
 import { parseSetextHeading } from './heading.ts';
+import { parseThematicBreak } from './thematic_break.ts';
 import { indentWidth, LAZY, stripColumns, stripLazy } from '../utils.ts';
 
 const htmlBlockStartRegex = /^ {0,3}<\/?([A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)/;
@@ -89,9 +90,7 @@ export function parseParagraph(
     }
     if (
       !lines[i].startsWith(LAZY) && (
-        /^ {0,3}(\*\s*){3,}$/.test(stripLazy(lines[i])) ||
-        /^ {0,3}(-\s*){3,}$/.test(stripLazy(lines[i])) ||
-        /^ {0,3}(_\s*){3,}$/.test(stripLazy(lines[i])) ||
+        parseThematicBreak(stripLazy(lines[i])) !== null ||
         /^ {0,3}>/.test(stripLazy(lines[i])) ||
         /^\s{0,3}[-+*][ \t]+/.test(stripLazy(lines[i])) ||
         (() => {
