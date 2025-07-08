@@ -45,3 +45,5 @@ export type TsmarkNode =
     type: 'html';
     content: string;
   };
+
+export type RefDef = { url: string; title?: string };
