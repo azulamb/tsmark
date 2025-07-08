@@ -29,12 +29,20 @@ export function parseCodeBlock(
       let i = start + 1;
       const codeLines: string[] = [];
       function isClosing(ln: string): boolean {
-        if (indentWidth(ln) > 3) return false;
+        if (indentWidth(ln) > 3) {
+          return false;
+        }
         const trimmed = ln.trimStart();
-        if (!trimmed.startsWith(fence[0])) return false;
+        if (!trimmed.startsWith(fence[0])) {
+          return false;
+        }
         let cnt = 0;
-        while (cnt < trimmed.length && trimmed[cnt] === fence[0]) cnt++;
-        if (cnt < fence.length) return false;
+        while (cnt < trimmed.length && trimmed[cnt] === fence[0]) {
+          cnt++;
+        }
+        if (cnt < fence.length) {
+          return false;
+        }
         return trimmed.slice(cnt).trim() === '';
       }
       while (i < lines.length) {

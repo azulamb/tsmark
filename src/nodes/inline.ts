@@ -152,7 +152,9 @@ export function inlineToHTML(
       while (i < text.length) {
         const ch = text[i];
         if (quote) {
-          if (ch === quote) quote = null;
+          if (ch === quote) {
+            quote = null;
+          }
           i++;
           continue;
         }
@@ -236,7 +238,9 @@ export function inlineToHTML(
           if (ch === '[') depth++;
           else if (ch === ']') {
             depth--;
-            if (depth === 0) break;
+            if (depth === 0) {
+              break;
+            }
           }
           j++;
         }
@@ -255,7 +259,9 @@ export function inlineToHTML(
             else if (ch === '(' && angle === 0) pd++;
             else if (ch === ')' && angle === 0) {
               pd--;
-              if (pd === 0) break;
+              if (pd === 0) {
+                break;
+              }
             }
             k++;
           }
@@ -346,7 +352,9 @@ export function inlineToHTML(
       let out = '';
       for (let i = 0; i < str.length;) {
         let isImage = false;
-        if (str[i] === '!' && str[i + 1] === '[') isImage = true;
+        if (str[i] === '!' && str[i + 1] === '[') {
+          isImage = true;
+        }
         if (isImage || str[i] === '[') {
           const start = isImage ? i + 1 : i;
           let j = start + 1;
@@ -568,7 +576,9 @@ export function applyEmphasisOnce(text: string): string {
   }
 
   function isPunctuation(ch: string): boolean {
-    if (ch === '<' || ch === '>') return false;
+    if (ch === '<' || ch === '>') {
+      return false;
+    }
     return /[\p{P}\p{S}]/u.test(ch);
   }
 
@@ -578,7 +588,9 @@ export function applyEmphasisOnce(text: string): string {
     const ch = text[i];
     if (ch === '*' || ch === '_') {
       let j = i;
-      while (j < text.length && text[j] === ch) j++;
+      while (j < text.length && text[j] === ch) {
+        j++;
+      }
       const count = j - i;
       const prev = i === 0 ? '' : text[i - 1];
       const next = j >= text.length ? '' : text[j];
@@ -608,14 +620,20 @@ export function applyEmphasisOnce(text: string): string {
   const stack: Delim[] = [];
   for (let idx = 0; idx < tokens.length; idx++) {
     const t = tokens[idx];
-    if (!t.delim) continue;
+    if (!t.delim) {
+      continue;
+    }
     const d = t.delim;
     if (d.canClose) {
       let openerIndex = -1;
       for (let j = stack.length - 1; j >= 0; j--) {
         const op = stack[j];
-        if (op.char !== d.char) continue;
-        if (!op.canOpen) continue;
+        if (op.char !== d.char) {
+          continue;
+        }
+        if (!op.canOpen) {
+          continue;
+        }
         if (
           (op.canClose || d.canOpen) && ((op.count + d.count) % 3 === 0) &&
           (op.count % 3 !== 0 || d.count % 3 !== 0)
