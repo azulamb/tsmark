@@ -1,6 +1,6 @@
 import * as assert from 'jsr:@std/assert';
 import tests from './spec.json' with { type: 'json' };
-import { convertToHTML } from '../src/html.ts';
+import { convertToHTML } from '../mod.ts';
 
 const testIds = Deno.args.map((arg) => {
   const id = parseInt(arg, 10);
