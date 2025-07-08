@@ -1,4 +1,4 @@
-import type { RefDef, TsmarkNode } from '../types.js';
+import type { RefDef, TsmarkNode } from '../types.d.ts';
 import { inlineToHTML } from './inline.ts';
 
 export function parseATXHeading(line: string): TsmarkNode | null {

@@ -6,7 +6,7 @@ import {
   normalizeLabel,
   unescapeMd,
 } from '../utils.ts';
-import type { RefDef } from '../types.js';
+import type { RefDef } from '../types.d.ts';
 
 export function inlineToHTML(
   text: string,
