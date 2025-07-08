@@ -1102,104 +1102,109 @@ function inlineToHTML(
     return token;
   });
 
-  // inline images (direct)
-  text = text.replace(
-    /!\[((?:\\.|[^\[\]])*)\]\(<([^>]+)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
-    (m, alt, href, t1, t2, t3) => {
-      const title = t1 || t2 || t3;
-      const src = encodeHref(
-        restoreEntities(restoreEscapes(href)),
-      );
-      const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-      let html = `<img src="${src}" alt="${escapeHTML(altPlain)}"`;
-      if (title) {
-        html += ` title="${
-          escapeHTML(restoreEntities(restoreEscapes(title)))
-        }"`;
+  function processDirect(str: string): string {
+    let out = '';
+    for (let i = 0; i < str.length;) {
+      let isImage = false;
+      if (str[i] === '!' && str[i + 1] === '[') {
+        isImage = true;
       }
-      html += ' />';
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    },
-  );
-
-  text = text.replace(
-    /!\[((?:\\.|[^\[\]])*)\]\(((?:\\.|[^()\\]|\([^()\\]*\))*?)\)/g,
-    (m, alt, inside) => {
-      const m2 = inside.match(
-        /^[ \t\n]*([^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
-      );
-      if (!m2) return m;
-      let href = restoreEntities(restoreEscapes(m2[1]));
-      const title = m2[2] || m2[3] || m2[4];
-      const src = encodeHref(
-        restoreEntities(restoreEscapes(href.replace(/^<|>$/g, ''))),
-      );
-      const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-      let html = `<img src="${src}" alt="${escapeHTML(altPlain)}"`;
-      if (title) {
-        html += ` title="${
-          escapeHTML(restoreEntities(restoreEscapes(title)))
-        }"`;
+      if (isImage || str[i] === '[') {
+        const start = isImage ? i + 1 : i;
+        let j = start + 1;
+        let depth = 1;
+        while (j < str.length) {
+          const ch = str[j];
+          if (ch === '\\') {
+            j += 2;
+            continue;
+          }
+          if (ch === '[') depth++;
+          else if (ch === ']') {
+            depth--;
+            if (depth === 0) break;
+          }
+          j++;
+        }
+        if (depth === 0 && j + 1 < str.length && str[j + 1] === '(') {
+          let k = j + 2;
+          let pd = 1;
+          let angle = 0;
+          while (k < str.length) {
+            const ch = str[k];
+            if (ch === '\\') {
+              k += 2;
+              continue;
+            }
+            if (ch === '<') angle++;
+            else if (ch === '>' && angle > 0) angle--;
+            else if (ch === '(' && angle === 0) pd++;
+            else if (ch === ')' && angle === 0) {
+              pd--;
+              if (pd === 0) break;
+            }
+            k++;
+          }
+          if (pd === 0) {
+            const textContent = str.slice(start + 1, j);
+            const inside = str.slice(j + 2, k);
+            const m = inside.match(
+              /^[ \t\n]*(<[^>\n]*>|[^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
+            );
+            const hasNested = /(^|[^!])\[[^\]]*\]\(/.test(textContent);
+            if (m && !hasNested) {
+              const hrefRaw = restoreEntities(restoreEscapes(m[1]));
+              const title = m[2] || m[3] || m[4];
+              const url = encodeHref(
+                decodeEntities(unescapeMd(hrefRaw.replace(/^<|>$/g, ''))),
+              );
+              if (isImage) {
+                const altPlain = inlineToHTML(textContent, refs).replace(
+                  /<[^>]*>/g,
+                  '',
+                );
+                let html = `<img src="${url}" alt="${escapeHTML(altPlain)}"`;
+                if (title) {
+                  html += ` title="${
+                    escapeHTML(
+                      decodeEntities(
+                        unescapeMd(restoreEntities(restoreEscapes(title))),
+                      ),
+                    )
+                  }"`;
+                }
+                html += ' />';
+                const token = `\u0000${placeholders.length}\u0000`;
+                placeholders.push(html);
+                out += token;
+              } else {
+                const inner = inlineToHTML(textContent, refs, placeholders);
+                const titleAttr = title
+                  ? ` title="${
+                    escapeHTML(
+                      decodeEntities(
+                        unescapeMd(restoreEntities(restoreEscapes(title))),
+                      ),
+                    )
+                  }"`
+                  : '';
+                const token = `\u0000${placeholders.length}\u0000`;
+                placeholders.push(`<a href="${url}"${titleAttr}>${inner}</a>`);
+                out += token;
+              }
+              i = k + 1;
+              continue;
+            }
+          }
+        }
       }
-      html += ' />';
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(html);
-      return token;
-    },
-  );
+      out += str[i];
+      i++;
+    }
+    return out;
+  }
 
-  // inline links (direct) with angle brackets around destination
-  text = text.replace(
-    /\[([^\[\]]*)\]\(<([^\n>]*)>[ \t\n]*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\))?\)/g,
-    (m, textContent, href, t1, t2, t3) => {
-      const title = t1 || t2 || t3;
-      const decodedHref = decodeEntities(
-        unescapeMd(restoreEntities(restoreEscapes(href))),
-      );
-      const titleAttr = title
-        ? ` title="${
-          escapeHTML(
-            decodeEntities(unescapeMd(restoreEntities(restoreEscapes(title)))),
-          )
-        }"`
-        : '';
-      const inner = inlineToHTML(textContent, refs, placeholders);
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(
-        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${inner}</a>`,
-      );
-      return token;
-    },
-  );
-
-  // inline links (direct)
-  text = text.replace(
-    /\[([^\[\]]*)\]\(((?:\\.|[^()\\]|\([^()\\]*\))*?)\)/g,
-    (m, textContent, inside) => {
-      const m2 = inside.match(
-        /^[ \t\n]*([^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
-      );
-      if (!m2) return m;
-      let href = restoreEntities(restoreEscapes(m2[1]));
-      const title = m2[2] || m2[3] || m2[4];
-      const decodedHref = decodeEntities(unescapeMd(href));
-      const titleAttr = title
-        ? ` title="${
-          escapeHTML(
-            decodeEntities(unescapeMd(restoreEntities(restoreEscapes(title)))),
-          )
-        }"`
-        : '';
-      const inner = inlineToHTML(textContent, refs, placeholders);
-      const token = `\u0000${placeholders.length}\u0000`;
-      placeholders.push(
-        `<a href="${encodeHref(decodedHref)}"${titleAttr}>${inner}</a>`,
-      );
-      return token;
-    },
-  );
+  text = processDirect(text);
 
   // inline links with empty destination
   text = text.replace(/\[([^\]]*)\]\(\)/g, (_, textContent) => {
