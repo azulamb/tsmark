@@ -831,6 +831,27 @@ function normalizeLabel(text: string): string {
   return caseFold(text).replace(/\s+/g, ' ').trim();
 }
 
+function isValidLabel(text: string): boolean {
+  let depth = 0;
+  let hasNonSpace = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\\') {
+      i++;
+      continue;
+    }
+    if (ch === '[') {
+      depth++;
+    } else if (ch === ']') {
+      if (depth === 0) return false;
+      depth--;
+    } else if (ch.trim() !== '') {
+      hasNonSpace = true;
+    }
+  }
+  return depth === 0 && hasNonSpace;
+}
+
 const namedEntities: Record<string, string> = {
   quot: '"',
   amp: '&',
@@ -1152,17 +1173,18 @@ function inlineToHTML(
               /^[ \t\n]*(<[^>\n]*>|[^ \t\n<>]+)(?:[ \t\n]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t\n]*$/s,
             );
             const hasNested = /(^|[^!])\[[^\]]*\]\(/.test(textContent);
-            if (m && !hasNested) {
+            if (m && (!hasNested || isImage)) {
               const hrefRaw = restoreEntities(restoreEscapes(m[1]));
               const title = m[2] || m[3] || m[4];
               const url = encodeHref(
                 decodeEntities(unescapeMd(hrefRaw.replace(/^<|>$/g, ''))),
               );
               if (isImage) {
-                const altPlain = inlineToHTML(textContent, refs).replace(
-                  /<[^>]*>/g,
-                  '',
+                const altProcessed = inlineToHTML(textContent, refs).replace(
+                  /<img[^>]*alt="([^"]*)"[^>]*>/g,
+                  '$1',
                 );
+                const altPlain = altProcessed.replace(/<[^>]*>/g, '');
                 let html = `<img src="${url}" alt="${escapeHTML(altPlain)}"`;
                 if (title) {
                   html += ` title="${
@@ -1225,100 +1247,183 @@ function inlineToHTML(
     return m;
   });
 
-  // reference-style images
+  // reference-style images and links
   if (refs) {
-    text = text.replace(
-      /!\[((?:\\.|[^\\\[\]])*)\]\[((?:\\.|[^\\\[\]])*)\]/g,
-      (m, alt, lab) => {
-        const label = normalizeLabel(
-          restoreEntities(restoreEscapesForKey(lab || alt)),
-        );
-        const def = refs.get(label);
-        if (!def) return m;
-        const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-        let html = `<img src="${encodeHref(def.url)}" alt="${
-          escapeHTML(altPlain)
-        }"`;
-        if (def.title) html += ` title="${escapeHTML(def.title)}"`;
-        html += ' />';
-        const token = `\u0000${placeholders.length}\u0000`;
-        placeholders.push(html);
-        return token;
-      },
-    );
-
-    text = text.replace(
-      /!\[((?:\\.|[^\\\[\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
-      (m, alt) => {
-        const label = normalizeLabel(
-          restoreEntities(restoreEscapesForKey(alt)),
-        );
-        const def = refs.get(label);
-        if (!def) return m;
-        const altPlain = inlineToHTML(alt, refs).replace(/<[^>]*>/g, '');
-        let html = `<img src="${encodeHref(def.url)}" alt="${
-          escapeHTML(altPlain)
-        }"`;
-        if (def.title) html += ` title="${escapeHTML(def.title)}"`;
-        html += ' />';
-        const token = `\u0000${placeholders.length}\u0000`;
-        placeholders.push(html);
-        return token;
-      },
-    );
-
-    // reference-style links
-    text = text.replace(
-      /\[((?:\\.|[^\\\[\]])+)\]\[((?:\\.|[^\\\[\]])*)\]/g,
-      (m, textContent, lab) => {
-        if (/\u0000(\d+)\u0000/.test(textContent)) {
-          const matches = [...textContent.matchAll(/\u0000(\d+)\u0000/g)];
-          if (
-            matches.some((ma) => {
-              const ph = placeholders[+ma[1]];
-              return typeof ph === 'string' && ph.startsWith('<a ');
-            })
-          ) {
-            return m;
+    function processReference(str: string): string {
+      let out = '';
+      for (let i = 0; i < str.length;) {
+        let isImage = false;
+        if (str[i] === '!' && str[i + 1] === '[') isImage = true;
+        if (isImage || str[i] === '[') {
+          const start = isImage ? i + 1 : i;
+          let j = start + 1;
+          let depth = 1;
+          while (j < str.length) {
+            const ch = str[j];
+            if (ch === '\\') {
+              j += 2;
+              continue;
+            }
+            if (ch === '[') depth++;
+            else if (ch === ']') {
+              depth--;
+              if (depth === 0) break;
+            }
+            j++;
+          }
+          if (depth === 0) {
+            const textContent = str.slice(start + 1, j);
+            let k = j + 1;
+            if (k < str.length && str[k] === '[') {
+              let l = k + 1;
+              while (l < str.length) {
+                const ch = str[l];
+                if (ch === '\\') {
+                  l += 2;
+                  continue;
+                }
+                if (ch === ']') break;
+                l++;
+              }
+              if (l < str.length && str[l] === ']') {
+                const labelRaw = str.slice(k + 1, l);
+                const key = normalizeLabel(
+                  restoreEntities(
+                    restoreEscapesForKey(labelRaw || textContent),
+                  ),
+                );
+                const def = refs!.get(key);
+                if (def) {
+                  if (isImage) {
+                    const altProcessed = inlineToHTML(textContent, refs)
+                      .replace(
+                        /<img[^>]*alt="([^"]*)"[^>]*>/g,
+                        '$1',
+                      );
+                    const altPlain = altProcessed.replace(/<[^>]*>/g, '');
+                    let html = `<img src="${encodeHref(def.url)}" alt="${
+                      escapeHTML(altPlain)
+                    }"`;
+                    if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+                    html += ' />';
+                    const token = `\u0000${placeholders.length}\u0000`;
+                    placeholders.push(html);
+                    out += token;
+                    i = l + 1;
+                    continue;
+                  } else {
+                    let hasNested = /(^|[^!])\[[^\]]*\]\(|(^|[^!])\[[^\]]*\]\[/
+                      .test(textContent);
+                    if (!hasNested && /\u0000(\d+)\u0000/.test(textContent)) {
+                      const matches = [
+                        ...textContent.matchAll(/\u0000(\d+)\u0000/g),
+                      ];
+                      if (
+                        matches.some((ma) => {
+                          const ph = placeholders[+ma[1]];
+                          return typeof ph === 'string' && ph.startsWith('<a ');
+                        })
+                      ) {
+                        hasNested = true;
+                      }
+                    }
+                    if (hasNested) {
+                      // not a valid link label due to nesting
+                    } else {
+                      const inner = inlineToHTML(
+                        textContent,
+                        refs,
+                        placeholders,
+                      );
+                      const titleAttr = def.title
+                        ? ` title="${
+                          escapeHTML(decodeEntities(unescapeMd(def.title)))
+                        }"`
+                        : '';
+                      const href = encodeHref(
+                        decodeEntities(unescapeMd(def.url)),
+                      );
+                      const token = `\u0000${placeholders.length}\u0000`;
+                      placeholders.push(
+                        `<a href="${href}"${titleAttr}>${inner}</a>`,
+                      );
+                      out += token;
+                      i = l + 1;
+                      continue;
+                    }
+                  }
+                }
+              }
+            } else {
+              const key = normalizeLabel(
+                restoreEntities(restoreEscapesForKey(textContent)),
+              );
+              const def = refs!.get(key);
+              if (def) {
+                if (isImage) {
+                  const altProcessed = inlineToHTML(textContent, refs).replace(
+                    /<img[^>]*alt="([^"]*)"[^>]*>/g,
+                    '$1',
+                  );
+                  const altPlain = altProcessed.replace(/<[^>]*>/g, '');
+                  let html = `<img src="${encodeHref(def.url)}" alt="${
+                    escapeHTML(altPlain)
+                  }"`;
+                  if (def.title) html += ` title="${escapeHTML(def.title)}"`;
+                  html += ' />';
+                  const token = `\u0000${placeholders.length}\u0000`;
+                  placeholders.push(html);
+                  out += token;
+                  i = j + 1;
+                  continue;
+                } else {
+                  let hasNested = /(^|[^!])\[[^\]]*\]\(|(^|[^!])\[[^\]]*\]\[/
+                    .test(textContent);
+                  if (!hasNested && /\u0000(\d+)\u0000/.test(textContent)) {
+                    const matches = [
+                      ...textContent.matchAll(/\u0000(\d+)\u0000/g),
+                    ];
+                    if (
+                      matches.some((ma) => {
+                        const ph = placeholders[+ma[1]];
+                        return typeof ph === 'string' && ph.startsWith('<a ');
+                      })
+                    ) {
+                      hasNested = true;
+                    }
+                  }
+                  if (hasNested) {
+                    // not a valid link label due to nesting
+                  } else {
+                    const inner = inlineToHTML(textContent, refs, placeholders);
+                    const titleAttr = def.title
+                      ? ` title="${
+                        escapeHTML(decodeEntities(unescapeMd(def.title)))
+                      }"`
+                      : '';
+                    const href = encodeHref(
+                      decodeEntities(unescapeMd(def.url)),
+                    );
+                    const token = `\u0000${placeholders.length}\u0000`;
+                    placeholders.push(
+                      `<a href="${href}"${titleAttr}>${inner}</a>`,
+                    );
+                    out += token;
+                    i = j + 1;
+                    continue;
+                  }
+                }
+              }
+            }
           }
         }
-        const key = normalizeLabel(
-          restoreEntities(restoreEscapesForKey(lab || textContent)),
-        );
-        const def = refs.get(key);
-        if (!def) return m;
-        const token = `\u0000${placeholders.length}\u0000`;
-        const titleAttr = def.title
-          ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
-          : '';
-        const href = encodeHref(decodeEntities(unescapeMd(def.url)));
-        const inner = inlineToHTML(textContent, refs, placeholders);
-        placeholders.push(
-          `<a href="${href}"${titleAttr}>${inner}</a>`,
-        );
-        return token;
-      },
-    );
+        out += str[i];
+        i++;
+      }
+      return out;
+    }
 
-    text = text.replace(
-      /\[((?:\\.|[^\\\[\]])+)\](?!\([^\s)]+(?:\s+"[^"]+")?\))/g,
-      (m, textContent) => {
-        const def = refs.get(
-          normalizeLabel(restoreEntities(restoreEscapesForKey(textContent))),
-        );
-        if (!def) return m;
-        const token = `\u0000${placeholders.length}\u0000`;
-        const titleAttr = def.title
-          ? ` title="${escapeHTML(decodeEntities(unescapeMd(def.title)))}"`
-          : '';
-        const href = encodeHref(decodeEntities(unescapeMd(def.url)));
-        const inner = inlineToHTML(textContent, refs, placeholders);
-        placeholders.push(
-          `<a href="${href}"${titleAttr}>${inner}</a>`,
-        );
-        return token;
-      },
-    );
+    text = processReference(text);
   }
 
   let out = escapeHTML(text);
@@ -1536,44 +1641,51 @@ export function convertToHTML(md: string): string {
     let handled = false;
     const m = canStart ? lineForDef.match(startDef) : null;
     if (m) {
-      let rest = m[2];
-      let j = i;
-      while (j + 1 < lines.length) {
-        const nxt = lines[j + 1];
-        const t = nxt.trimStart();
-        const restTrim = rest.trim();
-        if (titlePattern.test(restTrim)) {
-          const combined = `${restTrim}\n${t}`.trim();
-          if (!titlePattern.test(combined)) break;
+      if (!isValidLabel(m[1])) {
+        // not a valid reference label
+      } else {
+        let rest = m[2];
+        let j = i;
+        while (j + 1 < lines.length) {
+          const nxt = lines[j + 1];
+          const t = nxt.trimStart();
+          const restTrim = rest.trim();
+          if (titlePattern.test(restTrim)) {
+            const combined = `${restTrim}\n${t}`.trim();
+            if (!titlePattern.test(combined)) break;
+          }
+          if (t === '' || startDef.test(nxt)) break;
+          rest += '\n' + t;
+          j++;
         }
-        if (t === '' || startDef.test(nxt)) break;
-        rest += '\n' + t;
-        j++;
-      }
-      const nextIdx = j;
-      rest = rest.trim();
-      const m2 = rest.match(titlePattern);
-      if (m2) {
-        let url = m2[1];
-        if (url.startsWith('<') && url.endsWith('>')) {
-          url = url.slice(1, -1);
+        const nextIdx = j;
+        rest = rest.trim();
+        const m2 = rest.match(titlePattern);
+        if (m2) {
+          let url = m2[1];
+          if (url.startsWith('<') && url.endsWith('>')) {
+            url = url.slice(1, -1);
+          }
+          const title = m2[2] || m2[3] || m2[4];
+          const key = normalizeLabel(m[1]);
+          if (key !== '' && !refs.has(key)) {
+            refs.set(key, {
+              url: unescapeMd(url),
+              title: title ? unescapeMd(title) : undefined,
+            });
+          }
+          if (bq) {
+            const prefix = first.slice(0, first.length - lineForDef.length);
+            filtered.push(prefix.trimEnd());
+          }
+          if (key !== '') {
+            i = nextIdx;
+            handled = true;
+            prevWasDef = true;
+            continue;
+          }
+          // if key empty, fall through to normal processing
         }
-        const title = m2[2] || m2[3] || m2[4];
-        const key = normalizeLabel(m[1]);
-        if (!refs.has(key)) {
-          refs.set(key, {
-            url: unescapeMd(url),
-            title: title ? unescapeMd(title) : undefined,
-          });
-        }
-        if (bq) {
-          const prefix = first.slice(0, first.length - lineForDef.length);
-          filtered.push(prefix.trimEnd());
-        }
-        i = nextIdx;
-        handled = true;
-        prevWasDef = true;
-        continue;
       }
     }
     if (!handled) {
@@ -1613,14 +1725,14 @@ export function convertToHTML(md: string): string {
           const nextIdx = j;
           rest = rest.trim();
           const m2 = rest.match(titlePattern);
-          if (m2) {
+          if (m2 && isValidLabel(label)) {
             let url = m2[1];
             if (url.startsWith('<') && url.endsWith('>')) {
               url = url.slice(1, -1);
             }
             const title = m2[2] || m2[3] || m2[4];
             const key = normalizeLabel(label);
-            if (!refs.has(key)) {
+            if (key !== '' && !refs.has(key)) {
               refs.set(key, {
                 url: unescapeMd(url),
                 title: title ? unescapeMd(title) : undefined,
@@ -1630,10 +1742,13 @@ export function convertToHTML(md: string): string {
               const prefix = first.slice(0, first.length - lineForDef.length);
               filtered.push(prefix.trimEnd());
             }
-            i = nextIdx;
-            handled = true;
-            prevWasDef = true;
-            continue;
+            if (key !== '') {
+              i = nextIdx;
+              handled = true;
+              prevWasDef = true;
+              continue;
+            }
+            // if key empty, fall through to normal processing
           }
         }
       }
