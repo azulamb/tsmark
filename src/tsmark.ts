@@ -83,12 +83,21 @@ function parseBlocks(md: string, refs: Map<string, RefDef>): TsmarkNode[] {
 export function parse(
   md: string,
 ): { nodes: TsmarkNode[]; refs: Map<string, RefDef> } {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const { filtered, refs } = extractRefDefs(lines);
+  const nodes = parseBlocks(filtered.join('\n'), refs);
+  return { nodes, refs };
+}
+
+function extractRefDefs(lines: string[]): {
+  filtered: string[];
+  refs: Map<string, RefDef>;
+} {
   const startDef = /^ {0,3}\[((?:\\.|[^\\\[\]])+)\]:\s*(.*)$/;
   const titlePattern =
     /^(<[^>]*>|[^\s<>]+)(?:\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?\s*$/s;
   const refs = new Map<string, RefDef>();
   const filtered: string[] = [];
-  const lines = md.replace(/\r\n?/g, '\n').split('\n');
   let prevWasDef = false;
   function canStartDef(idx: number): boolean {
     if (idx === 0) return true;
@@ -109,6 +118,7 @@ export function parse(
     if (indentWidth(prev) >= 4) return true;
     return false;
   }
+
   let fence: { char: string; len: number } | null = null;
   for (let i = 0; i < lines.length; i++) {
     const first = lines[i];
@@ -131,48 +141,46 @@ export function parse(
     const canStart = canStartDef(i);
     let handled = false;
     const m = canStart ? lineForDef.match(startDef) : null;
-    if (m) {
-      if (isValidLabel(m[1])) {
-        let rest = m[2];
-        let j = i;
-        while (j + 1 < lines.length) {
-          const nxt = lines[j + 1];
-          const t = nxt.trimStart();
-          const restTrim = rest.trim();
-          if (titlePattern.test(restTrim)) {
-            const combined = `${restTrim}\n${t}`.trim();
-            if (!titlePattern.test(combined)) break;
-          }
-          if (t === '' || startDef.test(nxt)) break;
-          rest += '\n' + t;
-          j++;
+    if (m && isValidLabel(m[1])) {
+      let rest = m[2];
+      let j = i;
+      while (j + 1 < lines.length) {
+        const nxt = lines[j + 1];
+        const t = nxt.trimStart();
+        const restTrim = rest.trim();
+        if (titlePattern.test(restTrim)) {
+          const combined = `${restTrim}\n${t}`.trim();
+          if (!titlePattern.test(combined)) break;
         }
-        const nextIdx = j;
-        rest = rest.trim();
-        const m2 = rest.match(titlePattern);
-        if (m2) {
-          let url = m2[1];
-          if (url.startsWith('<') && url.endsWith('>')) {
-            url = url.slice(1, -1);
-          }
-          const title = m2[2] || m2[3] || m2[4];
-          const key = normalizeLabel(m[1]);
-          if (key !== '' && !refs.has(key)) {
-            refs.set(key, {
-              url: unescapeMd(url),
-              title: title ? unescapeMd(title) : undefined,
-            });
-          }
-          if (bq) {
-            const prefix = first.slice(0, first.length - lineForDef.length);
-            filtered.push(prefix.trimEnd());
-          }
-          if (key !== '') {
-            i = nextIdx;
-            handled = true;
-            prevWasDef = true;
-            continue;
-          }
+        if (t === '' || startDef.test(nxt)) break;
+        rest += '\n' + t;
+        j++;
+      }
+      const nextIdx = j;
+      rest = rest.trim();
+      const m2 = rest.match(titlePattern);
+      if (m2) {
+        let url = m2[1];
+        if (url.startsWith('<') && url.endsWith('>')) {
+          url = url.slice(1, -1);
+        }
+        const title = m2[2] || m2[3] || m2[4];
+        const key = normalizeLabel(m[1]);
+        if (key !== '' && !refs.has(key)) {
+          refs.set(key, {
+            url: unescapeMd(url),
+            title: title ? unescapeMd(title) : undefined,
+          });
+        }
+        if (bq) {
+          const prefix = first.slice(0, first.length - lineForDef.length);
+          filtered.push(prefix.trimEnd());
+        }
+        if (key !== '') {
+          i = nextIdx;
+          handled = true;
+          prevWasDef = true;
+          continue;
         }
       }
     }
@@ -245,6 +253,5 @@ export function parse(
       prevWasDef = false;
     }
   }
-  const nodes = parseBlocks(filtered.join('\n'), refs);
-  return { nodes, refs };
+  return { filtered, refs };
 }
