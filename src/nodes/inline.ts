@@ -5,8 +5,8 @@ import {
   isHtmlTag,
   normalizeLabel,
   unescapeMd,
-} from './utils.ts';
-import type { RefDef } from './types.d.ts';
+} from '../utils.ts';
+import type { RefDef } from '../types.js';
 
 export function inlineToHTML(
   text: string,
