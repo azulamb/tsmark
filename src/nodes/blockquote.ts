@@ -7,7 +7,9 @@ export function parseBlockquote(
   parseFn: (md: string) => TsmarkNode[],
 ): { node: TsmarkNode; next: number } | null {
   const first = stripLazy(lines[start]);
-  if (!/^ {0,3}>/.test(first)) return null;
+  if (!/^ {0,3}>/.test(first)) {
+    return null;
+  }
 
   let i = start;
   const bqLines: string[] = [];
@@ -47,7 +49,9 @@ export function parseBlockquote(
       !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
       !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current)
     ) {
-      if (prevBlank) break;
+      if (prevBlank) {
+        break;
+      }
       bqLines.push(
         LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
       );
@@ -67,7 +71,9 @@ export function parseBlockquote(
       );
       prevBlank = false;
       i++;
-    } else break;
+    } else {
+      break;
+    }
   }
 
   const children = parseFn(bqLines.join('\n'));

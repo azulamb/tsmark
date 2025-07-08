@@ -93,7 +93,9 @@ export function parseList(
             continue;
           }
           let j = i + 1;
-          while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
+          while (j < lines.length && stripLazy(lines[j]).trim() === '') {
+            j++;
+          }
           const next = j < lines.length ? stripLazy(lines[j]) : '';
           const nextMatch = isOrdered
             ? next.match(/^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/)
@@ -110,7 +112,9 @@ export function parseList(
           }
           if (nextInd >= markerIndent + 4) {
             let k = itemLines.length - 1;
-            while (k >= 0 && itemLines[k].trim() === '') k--;
+            while (k >= 0 && itemLines[k].trim() === '') {
+              k--;
+            }
             const prevLine = k >= 0 ? itemLines[k] : '';
             const prevBullet = isOrdered
               ? /^\s*\d+[.)]/.test(prevLine)
@@ -125,7 +129,9 @@ export function parseList(
           }
           if (nextInd >= markerIndent && !atStart) {
             let k2 = itemLines.length - 1;
-            while (k2 >= 0 && itemLines[k2].trim() === '') k2--;
+            while (k2 >= 0 && itemLines[k2].trim() === '') {
+              k2--;
+            }
             const prevLine = k2 >= 0 ? itemLines[k2] : '';
             const prevBullet = isOrdered
               ? /^\s*\d+[.)]/.test(prevLine)

@@ -44,22 +44,44 @@ export function convertToHTML(md: string): string {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
   let prevWasDef = false;
   function canStartDef(idx: number): boolean {
-    if (idx === 0) return true;
+    if (idx === 0) {
+      return true;
+    }
     const prev = lines[idx - 1];
-    if (prev.trim() === '') return true;
-    if (prevWasDef) return true;
-    if (startDef.test(prev)) return true;
-    if (/^ {0,3}\[$/.test(prev)) return true;
-    if (/^ {0,3}#{1,6}\s/.test(prev)) return true;
-    if (/^ {0,3}>/.test(prev)) return true;
-    if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(prev)) return true;
-    if (/^ {0,3}(`{3,}|~{3,})/.test(prev)) return true;
+    if (prev.trim() === '') {
+      return true;
+    }
+    if (prevWasDef) {
+      return true;
+    }
+    if (startDef.test(prev)) {
+      return true;
+    }
+    if (/^ {0,3}\[$/.test(prev)) {
+      return true;
+    }
+    if (/^ {0,3}#{1,6}\s/.test(prev)) {
+      return true;
+    }
+    if (/^ {0,3}>/.test(prev)) {
+      return true;
+    }
+    if (/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(prev)) {
+      return true;
+    }
+    if (/^ {0,3}(`{3,}|~{3,})/.test(prev)) {
+      return true;
+    }
     if (
       /^ {0,3}(?:\*\s*){3,}$/.test(prev) ||
       /^ {0,3}(?:-\s*){3,}$/.test(prev) ||
       /^ {0,3}(?:_\s*){3,}$/.test(prev)
-    ) return true;
-    if (indentWidth(prev) >= 4) return true;
+    ) {
+      return true;
+    }
+    if (indentWidth(prev) >= 4) {
+      return true;
+    }
     return false;
   }
   let fence: { char: string; len: number } | null = null;

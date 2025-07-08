@@ -165,7 +165,9 @@ export function isValidLabel(text: string): boolean {
     if (ch === '[') {
       depth++;
     } else if (ch === ']') {
-      if (depth === 0) return false;
+      if (depth === 0) {
+        return false;
+      }
       depth--;
     } else if (ch.trim() !== '') {
       hasNonSpace = true;
