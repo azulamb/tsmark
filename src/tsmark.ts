@@ -4,18 +4,15 @@ import { inlineToHTML } from './nodes/inline.ts';
 import { paragraphToHTML, parseParagraph } from './nodes/paragraph.ts';
 import { codeBlockToHTML, parseCodeBlock } from './nodes/code_block.ts';
 import { listToHTML, parseList } from './nodes/list.ts';
+import { blockquoteToHTML, parseBlockquote } from './nodes/blockquote.ts';
 import {
   caseFold,
   encodeHref,
   indentWidth,
-  indentWidthFrom,
   isHtmlTag,
   isValidLabel,
   LAZY,
   normalizeLabel,
-  stripColumns,
-  stripColumnsFrom,
-  stripIndent,
   stripLazy,
   stripMd,
   unescapeMd,
@@ -111,70 +108,10 @@ export function parse(md: string): TsmarkNode[] {
       continue;
     }
 
-    // blockquote
-    const bqMatch = stripped.match(/^ {0,3}>(.*)$/);
-    if (bqMatch) {
-      const bqLines: string[] = [];
-      let prevBlank = false;
-      let fence: { char: string; len: number } | null = null;
-      while (i < lines.length) {
-        const current = stripLazy(lines[i]);
-        const m = current.match(/^ {0,3}>(.*)$/);
-        if (m) {
-          let rest = m[1];
-          if (rest.startsWith(' ')) {
-            rest = rest.slice(1);
-          } else if (rest.startsWith('\t')) {
-            rest = '  ' + rest.slice(1);
-          }
-          rest = rest.replace(/\t/g, '    ');
-          const fm = rest.match(/^(`{3,}|~{3,})/);
-          if (fm) {
-            const ch = fm[1][0];
-            const len = fm[1].length;
-            if (!fence) {
-              fence = { char: ch, len };
-            } else if (fence.char === ch && len >= fence.len) {
-              fence = null;
-            }
-          }
-          bqLines.push(rest);
-          prevBlank = rest.trim() === '';
-          i++;
-        } else if (current.trim() === '') {
-          break;
-        } else if (
-          fence === null &&
-          indentWidth(lines[i]) <= 3 &&
-          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
-          !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
-          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current)
-        ) {
-          if (prevBlank) break;
-          bqLines.push(
-            LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
-          );
-          prevBlank = false;
-          i++;
-        } else if (
-          fence === null &&
-          indentWidth(lines[i]) > 3 &&
-          !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
-          !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
-          !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current) &&
-          !prevBlank &&
-          indentWidth(stripLazy(bqLines[bqLines.length - 1] ?? '')) <= 3
-        ) {
-          bqLines.push(
-            LAZY + stripColumns(lines[i], Math.min(indentWidth(lines[i]), 3)),
-          );
-          prevBlank = false;
-          i++;
-        } else break;
-      }
-      // console.log('bqLines', bqLines);
-      const children = parse(bqLines.join('\n'));
-      nodes.push({ type: 'blockquote', children });
+    const bqResult = parseBlockquote(lines, i, parse);
+    if (bqResult) {
+      nodes.push(bqResult.node);
+      i = bqResult.next;
       continue;
     }
 
@@ -309,10 +246,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
-    const inner = node.children.map((n) => nodeToHTML(n, refs)).join('\n');
-    return inner === ''
-      ? '<blockquote>\n</blockquote>'
-      : `<blockquote>\n${inner}\n</blockquote>`;
+    return blockquoteToHTML(node, (n) => nodeToHTML(n, refs), refs);
   } else if (node.type === 'thematic_break') {
     return '<hr />';
   } else if (node.type === 'html') {
