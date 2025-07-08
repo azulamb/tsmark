@@ -1,5 +1,4 @@
-import type { RefDef, TsmarkNode } from '../types.d.ts';
-import { inlineToHTML } from './inline.ts';
+import type { TsmarkNode } from '../types.d.ts';
 import { parseSetextHeading } from './heading.ts';
 import { parseThematicBreak } from './thematic_break.ts';
 import { htmlBlockStartRegex, htmlBlockTags } from './html.ts';
@@ -85,11 +84,4 @@ export function parseParagraph(
     };
   }
   return null;
-}
-
-export function paragraphToHTML(
-  node: TsmarkNode & { type: 'paragraph' },
-  refs?: Map<string, RefDef>,
-): string {
-  return `<p>${inlineToHTML(node.content, refs)}</p>`;
 }

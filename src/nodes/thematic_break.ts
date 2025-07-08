@@ -10,9 +10,3 @@ export function parseThematicBreak(line: string): TsmarkNode | null {
   }
   return null;
 }
-
-export function thematicBreakToHTML(
-  _node: TsmarkNode & { type: 'thematic_break' },
-): string {
-  return '<hr />';
-}

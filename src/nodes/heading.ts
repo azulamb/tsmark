@@ -1,5 +1,4 @@
-import type { RefDef, TsmarkNode } from '../types.d.ts';
-import { inlineToHTML } from './inline.ts';
+import type { TsmarkNode } from '../types.d.ts';
 
 export function parseATXHeading(line: string): TsmarkNode | null {
   const atx = line.match(/^ {0,3}(#{1,6})(.*)$/);
@@ -25,11 +24,4 @@ export function parseSetextHeading(
   const level = nextLine.trim().startsWith('=') ? 1 : 2;
   const content = paraLines.join('\n').trimEnd();
   return { type: 'heading', level, content };
-}
-
-export function headingToHTML(
-  node: TsmarkNode & { type: 'heading' },
-  refs?: Map<string, RefDef>,
-): string {
-  return `<h${node.level}>${inlineToHTML(node.content, refs)}</h${node.level}>`;
 }
