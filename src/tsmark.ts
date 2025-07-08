@@ -2,11 +2,10 @@ import type { RefDef, TsmarkNode } from './types.d.ts';
 import { headingToHTML, parseATXHeading } from './nodes/heading.ts';
 import { inlineToHTML } from './nodes/inline.ts';
 import { paragraphToHTML, parseParagraph } from './nodes/paragraph.ts';
+import { codeBlockToHTML, parseCodeBlock } from './nodes/code_block.ts';
 import {
   caseFold,
-  decodeEntities,
   encodeHref,
-  escapeHTML,
   indentWidth,
   indentWidthFrom,
   isHtmlTag,
@@ -345,85 +344,10 @@ export function parse(md: string): TsmarkNode[] {
       continue;
     }
 
-    // fenced code block
-    const fenceMatch = stripped.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
-    if (fenceMatch && indentWidth(fenceMatch[1]) <= 3) {
-      const char = fenceMatch[2][0];
-      const rest = fenceMatch[3];
-      if (char === '`' && rest.includes('`')) {
-        // info string contains fence character - not a fenced code block
-      } else {
-        const fenceIndent = indentWidth(fenceMatch[1]);
-        const fence = fenceMatch[2];
-        const info = fenceMatch[3].trim();
-        const language = info
-          ? decodeEntities(unescapeMd(info.split(/\s+/)[0]))
-          : undefined;
-        i++;
-        const codeLines: string[] = [];
-        function isClosing(ln: string): boolean {
-          if (indentWidth(ln) > 3) return false;
-          const trimmed = ln.trimStart();
-          if (!trimmed.startsWith(fence[0])) return false;
-          let cnt = 0;
-          while (cnt < trimmed.length && trimmed[cnt] === fence[0]) cnt++;
-          if (cnt < fence.length) return false;
-          return trimmed.slice(cnt).trim() === '';
-        }
-
-        while (i < lines.length) {
-          const ln = stripLazy(lines[i]);
-          if (isClosing(ln)) {
-            break;
-          }
-          codeLines.push(stripColumns(ln, fenceIndent));
-          i++;
-        }
-        const closed = i < lines.length && isClosing(stripLazy(lines[i]));
-        if (closed) i++; // skip closing fence
-        else {
-          while (
-            codeLines.length > 0 && codeLines[codeLines.length - 1] === ''
-          ) {
-            codeLines.pop();
-          }
-        }
-        const body = codeLines.join('\n');
-        nodes.push({
-          type: 'code_block',
-          content: body + (codeLines.length > 0 ? '\n' : ''),
-          language,
-        });
-        continue;
-      }
-    }
-
-    // indented code block (indentation >= 4 spaces)
-    if (indentWidth(line) >= 4) {
-      const codeLines: string[] = [];
-      while (
-        i < lines.length &&
-        (indentWidth(lines[i]) >= 4 || stripLazy(lines[i]).trim() === '')
-      ) {
-        codeLines.push(stripLazy(lines[i]));
-        i++;
-      }
-
-      while (
-        codeLines.length > 0 && codeLines[0].trim() === ''
-      ) {
-        codeLines.shift();
-      }
-
-      while (
-        codeLines.length > 0 && codeLines[codeLines.length - 1].trim() === ''
-      ) {
-        codeLines.pop();
-      }
-
-      const content = codeLines.map((l) => stripIndent(l)).join('\n');
-
-      nodes.push({ type: 'code_block', content: content + '\n' });
+    const codeResult = parseCodeBlock(lines, i);
+    if (codeResult) {
+      nodes.push(codeResult.node);
+      i = codeResult.next;
       continue;
     }
 
@@ -537,11 +461,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'paragraph') {
     return paragraphToHTML(node, refs);
   } else if (node.type === 'code_block') {
-    const escaped = escapeHTML(node.content);
-    const langClass = node.language
-      ? ` class="language-${escapeHTML(node.language)}"`
-      : '';
-    return `<pre><code${langClass}>${escaped}</code></pre>`;
+    return codeBlockToHTML(node, refs);
   } else if (node.type === 'list') {
     const items = node.items.map((it) => {
       if (it.type === 'list_item') {
