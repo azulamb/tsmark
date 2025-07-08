@@ -3,6 +3,7 @@ import { headingToHTML, parseATXHeading } from './nodes/heading.ts';
 import { inlineToHTML } from './nodes/inline.ts';
 import { paragraphToHTML, parseParagraph } from './nodes/paragraph.ts';
 import { codeBlockToHTML, parseCodeBlock } from './nodes/code_block.ts';
+import { listToHTML, parseList } from './nodes/list.ts';
 import {
   caseFold,
   encodeHref,
@@ -178,169 +179,10 @@ export function parse(md: string): TsmarkNode[] {
     }
 
     // list (unordered or ordered)
-    const bulletMatch = stripped.match(
-      /^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/,
-    );
-    const orderedMatch = stripped.match(
-      /^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/,
-    );
-    if (
-      !line.startsWith(LAZY) &&
-      (bulletMatch || orderedMatch) &&
-      !(/^ {0,3}(\*\s*){3,}$/.test(stripped) ||
-        /^ {0,3}(-\s*){3,}$/.test(stripped) ||
-        /^ {0,3}(_\s*){3,}$/.test(stripped))
-    ) {
-      const isOrdered = Boolean(orderedMatch);
-      const startNum = isOrdered ? parseInt(orderedMatch![2], 10) : undefined;
-      const bulletChar = bulletMatch ? bulletMatch[2] : null;
-      const delimChar = orderedMatch ? orderedMatch[3] : null;
-      const items: TsmarkNode[] = [];
-      while (i < lines.length) {
-        const cur = stripLazy(lines[i]);
-        const m = isOrdered
-          ? cur.match(/^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/)
-          : cur.match(/^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/);
-        if (
-          !m ||
-          (!isOrdered && m[2] !== bulletChar) ||
-          (isOrdered && m[3] !== delimChar) ||
-          /^ {0,3}(\*\s*){3,}$/.test(cur) ||
-          /^ {0,3}(-\s*){3,}$/.test(cur) ||
-          /^ {0,3}(_\s*){3,}$/.test(cur)
-        ) {
-          break;
-        }
-        const after = (isOrdered ? m[4] : m[3]) ?? '';
-        const markerBase = indentWidth(m[1]) +
-          (isOrdered ? m[2].length + 1 : 1);
-        const totalSpaces = indentWidthFrom(after, markerBase);
-        const spacesAfter = after.trim() === ''
-          ? 1
-          : totalSpaces >= 5
-          ? 1
-          : Math.min(totalSpaces, 4);
-        const markerIndent = markerBase + spacesAfter;
-        const firstLine = stripColumnsFrom(after, spacesAfter, markerBase);
-        const itemLines: string[] = [firstLine];
-        let itemLoose = false;
-        let fence: { char: string; len: number } | null = null;
-        const firstFm = firstLine.match(/^(\s*)(`{3,}|~{3,})/);
-        if (firstFm) {
-          fence = { char: firstFm[2][0], len: firstFm[2].length };
-        }
-        i++;
-        let prevBlank = false;
-        while (i < lines.length) {
-          const ind = indentWidth(lines[i]);
-          const current = stripLazy(lines[i]);
-          const fm = current.match(/^(\s*)(`{3,}|~{3,})/);
-          if (fm && indentWidth(fm[1]) <= 3) {
-            const ch = fm[2][0];
-            const len = fm[2].length;
-            if (!fence) {
-              fence = { char: ch, len };
-            } else if (fence.char === ch && len >= fence.len) {
-              fence = null;
-            }
-            itemLines.push(stripColumns(lines[i], markerIndent));
-            i++;
-            prevBlank = false;
-            continue;
-          }
-          if (/^\s*$/.test(current)) {
-            if (fence) {
-              itemLines.push('');
-              i++;
-              prevBlank = true;
-              continue;
-            }
-            let j = i + 1;
-            while (j < lines.length && stripLazy(lines[j]).trim() === '') j++;
-            const next = j < lines.length ? stripLazy(lines[j]) : '';
-            const nextMatch = isOrdered
-              ? next.match(/^(\s{0,3})(\d{1,9})([.)])((?:[ \t]+.*)?)$/)
-              : next.match(/^(\s{0,3})([-+*])((?:[ \t]+.*)?)$/);
-            const sameBullet = nextMatch &&
-              ((!isOrdered && nextMatch[2] === bulletChar) ||
-                (isOrdered && nextMatch[3] === delimChar));
-            const nextInd = j < lines.length ? indentWidth(lines[j]) : -1;
-            const atStart = itemLines.every((ln) => ln.trim() === '');
-            if (sameBullet && nextInd - indentWidth(m[1]) <= 3) {
-              itemLoose = true;
-              i = j;
-              break;
-            }
-            if (nextInd >= markerIndent + 4) {
-              let k = itemLines.length - 1;
-              while (k >= 0 && itemLines[k].trim() === '') k--;
-              const prevLine = k >= 0 ? itemLines[k] : '';
-              const prevBullet = isOrdered
-                ? /^\s*\d+[.)]/.test(prevLine)
-                : /^\s*[-+*]/.test(prevLine);
-              if (!prevBullet && prevLine.trim() !== '') {
-                itemLoose = true;
-              }
-              itemLines.push('');
-              i++;
-              prevBlank = true;
-              continue;
-            }
-            if (nextInd >= markerIndent && !atStart) {
-              let k2 = itemLines.length - 1;
-              while (k2 >= 0 && itemLines[k2].trim() === '') k2--;
-              const prevLine = k2 >= 0 ? itemLines[k2] : '';
-              const prevBullet = isOrdered
-                ? /^\s*\d+[.)]/.test(prevLine)
-                : /^\s*[-+*]/.test(prevLine);
-              if (!prevBullet) {
-                itemLoose = true;
-              }
-              itemLines.push('');
-              i++;
-              prevBlank = true;
-              continue;
-            }
-            break;
-          } else if (ind >= markerIndent) {
-            itemLines.push(stripColumns(lines[i], markerIndent));
-            i++;
-            prevBlank = false;
-          } else if (
-            !prevBlank &&
-            ind < markerIndent &&
-            !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:\*|_|-){3,}\s*$)/.test(current) &&
-            !/^(?:\s*)(`{3,}|~{3,})/.test(current) &&
-            !/^ {0,3}(?:\d{1,9}[.)]|[-+*])(?:\s|$)/.test(current) &&
-            !/^ {0,3}>/.test(current)
-          ) {
-            itemLines.push(
-              LAZY + stripColumns(lines[i], Math.min(ind, markerIndent)),
-            );
-            i++;
-            prevBlank = false;
-          } else {
-            break;
-          }
-        }
-        const children = parse(itemLines.join('\n'));
-        const paraCount = children.filter((c) => c.type === 'paragraph').length;
-        if (paraCount > 1) {
-          itemLoose = true;
-        }
-        items.push({ type: 'list_item', children, loose: itemLoose });
-      }
-      const listLoose = items.some((it) => (it as any).loose);
-      const listNode: any = {
-        type: 'list',
-        ordered: isOrdered,
-        items,
-        loose: listLoose,
-      };
-      if (isOrdered && startNum !== 1 && startNum !== undefined) {
-        listNode.start = startNum;
-      }
-      nodes.push(listNode as TsmarkNode);
+    const listResult = parseList(lines, i, parse);
+    if (listResult) {
+      nodes.push(listResult.node);
+      i = listResult.next;
       continue;
     }
 
@@ -463,54 +305,7 @@ function nodeToHTML(node: TsmarkNode, refs?: Map<string, RefDef>): string {
   } else if (node.type === 'code_block') {
     return codeBlockToHTML(node, refs);
   } else if (node.type === 'list') {
-    const items = node.items.map((it) => {
-      if (it.type === 'list_item') {
-        const [first, ...rest] = it.children;
-        if (!first) {
-          return '<li></li>';
-        }
-        if (first.type === 'paragraph') {
-          const firstHTML = inlineToHTML(first.content, refs);
-          const restHTML = rest.map((n) => {
-            if (n.type === 'paragraph' && !node.loose) {
-              return inlineToHTML(n.content, refs);
-            }
-            return nodeToHTML(n, refs);
-          }).join('\n');
-          if (!node.loose) {
-            if (rest.length === 0) {
-              return `<li>${firstHTML}</li>`;
-            }
-            return `<li>${firstHTML}\n${restHTML}\n</li>`;
-          }
-          if (rest.length === 0) {
-            return node.loose
-              ? `<li>\n<p>${firstHTML}</p>\n</li>`
-              : `<li><p>${firstHTML}</p></li>`;
-          }
-          return `<li>\n<p>${firstHTML}</p>\n${restHTML}\n</li>`;
-        }
-        const inner = [first, ...rest].map((n) => {
-          if (n.type === 'paragraph' && !node.loose) {
-            return inlineToHTML(n.content, refs);
-          }
-          return nodeToHTML(n, refs);
-        }).join('\n');
-        const trailing =
-          it.children[it.children.length - 1]?.type === 'paragraph' &&
-            !node.loose
-            ? ''
-            : '\n';
-        return `<li>\n${inner}${trailing}</li>`;
-      }
-      return `<li>${nodeToHTML(it, refs)}</li>`;
-    }).join('\n');
-    const tag = node.ordered ? 'ol' : 'ul';
-    const attr = node.ordered && (node as any).start !== undefined &&
-        (node as any).start !== 1
-      ? ` start="${(node as any).start}"`
-      : '';
-    return `<${tag}${attr}>\n${items}\n</${tag}>`;
+    return listToHTML(node, (n) => nodeToHTML(n, refs), refs);
   } else if (node.type === 'list_item') {
     return node.children.map((n) => nodeToHTML(n, refs)).join('');
   } else if (node.type === 'blockquote') {
