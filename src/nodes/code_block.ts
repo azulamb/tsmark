@@ -8,6 +8,15 @@ import {
   unescapeMd,
 } from '../utils.ts';
 
+function isClosingFence(line: string, fence: string): boolean {
+  if (indentWidth(line) > 3) return false;
+  const trimmed = line.trimStart();
+  if (!trimmed.startsWith(fence[0])) return false;
+  let count = 0;
+  while (count < trimmed.length && trimmed[count] === fence[0]) count++;
+  return count >= fence.length && trimmed.slice(count).trim() === '';
+}
+
 export function parseCodeBlock(
   lines: string[],
   start: number,
@@ -26,34 +35,19 @@ export function parseCodeBlock(
       const language = info
         ? decodeEntities(unescapeMd(info.split(/\s+/)[0]))
         : undefined;
+      const decodedInfo = info ? decodeEntities(unescapeMd(info)) : undefined;
       let i = start + 1;
       const codeLines: string[] = [];
-      function isClosing(ln: string): boolean {
-        if (indentWidth(ln) > 3) {
-          return false;
-        }
-        const trimmed = ln.trimStart();
-        if (!trimmed.startsWith(fence[0])) {
-          return false;
-        }
-        let cnt = 0;
-        while (cnt < trimmed.length && trimmed[cnt] === fence[0]) {
-          cnt++;
-        }
-        if (cnt < fence.length) {
-          return false;
-        }
-        return trimmed.slice(cnt).trim() === '';
-      }
       while (i < lines.length) {
         const ln = stripLazy(lines[i]);
-        if (isClosing(ln)) {
+        if (isClosingFence(ln, fence)) {
           break;
         }
         codeLines.push(stripColumns(ln, fenceIndent));
         i++;
       }
-      const closed = i < lines.length && isClosing(stripLazy(lines[i]));
+      const closed = i < lines.length &&
+        isClosingFence(stripLazy(lines[i]), fence);
       if (closed) {
         i++;
       } else {
@@ -67,6 +61,7 @@ export function parseCodeBlock(
           type: 'code_block',
           content: body + (codeLines.length > 0 ? '\n' : ''),
           language,
+          info: decodedInfo,
         },
         next: i,
       };

@@ -1,14 +1,27 @@
 {
   "lock": false,
   "tasks": {
+    "build": "deno bundle --minify --platform=browser -o ./docs/tsmark.js ./browser.ts",
     "update": "deno run --allow-read --allow-write --allow-net ./tools/dltests.ts",
-    "test": "deno test --allow-read ./tests/test.ts"
+    "test": "deno test --allow-read ./tests"
   },
   "lint": {
-    "include": ["./src", "./tests", "./tools"]
+    "include": [
+      "./src",
+      "./tools",
+      "./mod.ts",
+      "./browser.mod.ts",
+      "./browser.ts"
+    ]
   },
   "fmt": {
-    "include": ["./src", "./tests", "./tools"],
+    "include": [
+      "./src",
+      "./mod.ts",
+      "./browser.mod.ts",
+      "./browser.ts",
+      "./tests/ast_test.ts"
+    ],
     "singleQuote": true
   }
 }
