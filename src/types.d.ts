@@ -21,6 +21,7 @@ export type TsmarkNode =
     type: 'code_block';
     content: string;
     language?: string;
+    info?: string;
   }
   | {
     type: 'list';
@@ -28,6 +29,8 @@ export type TsmarkNode =
     items: TsmarkNode[];
     start?: number;
     loose?: boolean;
+    marker?: '-' | '+' | '*';
+    delimiter?: '.' | ')';
   }
   | {
     type: 'list_item';

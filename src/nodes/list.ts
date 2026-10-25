@@ -173,17 +173,28 @@ export function parseList(
       }
       items.push({ type: 'list_item', children, loose: itemLoose });
     }
-    const listLoose = items.some((it) => (it as any).loose);
-    const listNode: any = {
-      type: 'list',
-      ordered: isOrdered,
-      items,
-      loose: listLoose,
-    };
-    if (isOrdered && startNum !== 1 && startNum !== undefined) {
-      listNode.start = startNum;
-    }
-    return { node: listNode as TsmarkNode, next: i };
+    const listLoose = items.some((item) =>
+      item.type === 'list_item' && (item.loose ?? false)
+    );
+    const listNode: TsmarkNode = isOrdered
+      ? {
+        type: 'list',
+        ordered: true,
+        items,
+        loose: listLoose,
+        delimiter: delimChar === ')' ? ')' : '.',
+        ...(startNum !== 1 && startNum !== undefined
+          ? { start: startNum }
+          : {}),
+      }
+      : {
+        type: 'list',
+        ordered: false,
+        items,
+        loose: listLoose,
+        marker: bulletChar === '+' || bulletChar === '*' ? bulletChar : '-',
+      };
+    return { node: listNode, next: i };
   }
   return null;
 }
